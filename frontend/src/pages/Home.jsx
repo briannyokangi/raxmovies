@@ -1,30 +1,47 @@
 import { useEffect, useState } from 'react';
 import MovieCard from '../components/MovieCard';
 import SearchBar from '../components/SearchBar';
-import api from '../services/api';
+import { movieAPI } from '../services/api';
 
 const Home = () => {
-  const [movies, setMovies] = useState([]);
+  const [featuredMovies, setFeaturedMovies] = useState([]);
+  const [popularMovies, setPopularMovies] = useState([]);
   const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const fetchMovies = async (query = '') => {
+  useEffect(() => {
+    fetchFeaturedAndPopular();
+  }, []);
+
+  const fetchFeaturedAndPopular = async () => {
     try {
-      const res = await api.get(`/movies${query}`);
-      setMovies(res.data);
+      setLoading(true);
+      setError('');
+      
+      const [featuredRes, popularRes] = await Promise.all([
+        movieAPI.getFeaturedMovies(),
+        movieAPI.getPopularMovies(1),
+      ]);
+
+      setFeaturedMovies(featuredRes.data.movies || []);
+      setPopularMovies(popularRes.data.movies || []);
     } catch (error) {
-      console.error(error);
+      console.error('Error fetching movies:', error);
+      setError('Failed to load movies. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchMovies();
-  }, []);
-
   const handleSearch = (e) => {
     e.preventDefault();
-    const query = search ? `?search=${encodeURIComponent(search)}` : '';
-    fetchMovies(query);
+    if (search.trim()) {
+      window.location.href = `/movies?search=${encodeURIComponent(search)}`;
+    }
   };
+
+  const featuredMovie = featuredMovies[0];
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(255,74,111,0.2),_transparent_40%),_linear-gradient(180deg,_#020617,_#0f172a)] text-slate-100">
@@ -36,30 +53,50 @@ const Home = () => {
             <p className="max-w-2xl text-lg leading-8 text-slate-300">Browse original movie picks, build your profile, save favorites, and discover films by genre in a sleek cinematic interface.</p>
             <SearchBar value={search} onChange={(e) => setSearch(e.target.value)} onSubmit={handleSearch} />
           </div>
+
+          {/* Featured Movie Section */}
           <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-2xl shadow-black/20 backdrop-blur-xl">
             <h2 className="text-2xl font-semibold text-white">Featured movie</h2>
             <p className="mt-4 text-slate-300">Get inspired by top trends and streamer favorites handpicked for your next movie night.</p>
-            <div className="mt-8 space-y-5">
-              <div className="rounded-3xl bg-slate-900 p-5 shadow-xl shadow-black/40">
-                <p className="text-sm uppercase tracking-[0.35em] text-rose-400">Top pick</p>
-                <h3 className="mt-3 text-3xl font-semibold text-white">Shadow Harbor</h3>
-                <p className="mt-4 text-slate-300">A thrilling neo-noir film about a detective chasing the truth through city lights and hidden secrets.</p>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-3xl bg-slate-900 p-5 text-slate-300 shadow-xl shadow-black/30">
-                  <p className="text-sm uppercase tracking-[0.35em] text-slate-400">Genre</p>
-                  <p className="mt-2 text-xl font-semibold text-white">Mystery</p>
-                </div>
-                <div className="rounded-3xl bg-slate-900 p-5 text-slate-300 shadow-xl shadow-black/30">
-                  <p className="text-sm uppercase tracking-[0.35em] text-slate-400">Rating</p>
-                  <p className="mt-2 text-xl font-semibold text-white">8.7</p>
+            
+            {loading ? (
+              <div className="mt-8 space-y-5 animate-pulse">
+                <div className="rounded-3xl bg-slate-900 p-5 h-32"></div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-3xl bg-slate-900 p-5 h-24"></div>
+                  <div className="rounded-3xl bg-slate-900 p-5 h-24"></div>
                 </div>
               </div>
-            </div>
+            ) : featuredMovie ? (
+              <div className="mt-8 space-y-5">
+                <div className="rounded-3xl bg-slate-900 p-5 shadow-xl shadow-black/40">
+                  <p className="text-sm uppercase tracking-[0.35em] text-rose-400">Top pick</p>
+                  <h3 className="mt-3 text-3xl font-semibold text-white">{featuredMovie.title}</h3>
+                  <p className="mt-4 text-slate-300 line-clamp-2">{featuredMovie.overview}</p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-3xl bg-slate-900 p-5 text-slate-300 shadow-xl shadow-black/30">
+                    <p className="text-sm uppercase tracking-[0.35em] text-slate-400">Release</p>
+                    <p className="mt-2 text-xl font-semibold text-white">
+                      {featuredMovie.release_date
+                        ? new Date(featuredMovie.release_date).getFullYear()
+                        : 'TBA'}
+                    </p>
+                  </div>
+                  <div className="rounded-3xl bg-slate-900 p-5 text-slate-300 shadow-xl shadow-black/30">
+                    <p className="text-sm uppercase tracking-[0.35em] text-slate-400">Rating</p>
+                    <p className="mt-2 text-xl font-semibold text-white">
+                      {featuredMovie.vote_average?.toFixed(1) || 'N/A'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </section>
 
+      {/* Popular Movies Section */}
       <section className="container mx-auto px-4 pb-16">
         <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div>
@@ -68,9 +105,26 @@ const Home = () => {
           </div>
           <p className="text-sm uppercase tracking-[0.35em] text-rose-400">Updated daily</p>
         </div>
-        <div className="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {movies.slice(0, 6).map((movie) => <MovieCard key={movie._id} movie={movie} />)}
-        </div>
+
+        {error && (
+          <div className="mt-6 p-4 rounded-lg bg-red-500/20 border border-red-500/50 text-red-200">
+            {error}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-3 animate-pulse">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="rounded-xl bg-slate-800 h-64"></div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {popularMovies.slice(0, 6).map((movie) => (
+              <MovieCard key={movie.id || movie._id} movie={movie} />
+            ))}
+          </div>
+        )}
       </section>
     </main>
   );
