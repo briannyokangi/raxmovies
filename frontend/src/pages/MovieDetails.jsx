@@ -14,7 +14,7 @@ const MovieDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-
+  const [showTrailer, setShowTrailer] = useState(false);
   const loadMovie = async () => {
     try {
       setLoading(true);
@@ -131,6 +131,12 @@ const MovieDetails = () => {
   const genres = movie.genres || movie.genre || [];
   const cast = movie.credits?.cast?.slice(0, 10) || movie.cast || [];
   const runtime = movie.runtime || movie.duration;
+  const trailer =
+  movie.videos?.results?.find(
+    (video) =>
+      video.site === 'YouTube' &&
+      video.type === 'Trailer'
+  ) || null;
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -193,15 +199,13 @@ const MovieDetails = () => {
                   >
                     {isWatchlist ? '✓ Remove from watchlist' : '+ Add to watchlist'}
                   </button>
-                  {movie.credits?.videos && movie.credits.videos.length > 0 && (
-                    <a
-                      href={`https://www.youtube.com/watch?v=${movie.credits.videos[0].key}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded-full border border-rose-500 px-5 py-3 text-sm text-rose-200 transition hover:bg-rose-500/10"
-                    >
-                      ▶ Watch trailer
-                    </a>
+                  {movie.credits?.videos?.length > 0 && (
+                   <button
+                   onClick={() => setShowTrailer(true)}
+                   className="rounded-full border border-rose-500 px-5 py-3 text-sm text-rose-200 transition hover:bg-rose-500/10"
+                  >
+                   ▶ Watch Trailer
+                   </button>
                   )}
                 </div>
               </div>
@@ -217,7 +221,8 @@ const MovieDetails = () => {
                       key={idx}
                       className="rounded-full bg-slate-950/80 px-4 py-2 text-sm text-slate-300"
                     >
-                      {typeof actor === 'string' ? actor : actor.name}
+           
+                   {typeof actor === 'string' ? actor : actor.name}
                     </span>
                   ))}
                 </div>
@@ -332,6 +337,34 @@ const MovieDetails = () => {
           </aside>
         </div>
       </section>
+      {showTrailer && movie.credits?.videos?.length > 0 && (
+  <div
+    className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
+    onClick={() => setShowTrailer(false)}
+  >
+    <div
+      className="relative w-[90%] max-w-5xl"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        onClick={() => setShowTrailer(false)}
+        className="absolute -top-12 right-0 text-4xl text-white"
+      >
+        ✕
+      </button>
+
+      <div className="aspect-video overflow-hidden rounded-2xl">
+        <iframe
+          className="h-full w-full"
+          src={`https://www.youtube.com/embed/${movie.credits.videos[0].key}?autoplay=1`}
+          title="Movie Trailer"
+          allow="autoplay; encrypted-media"
+          allowFullScreen
+        />
+      </div>
+    </div>
+  </div>
+)}
     </main>
   );
 };

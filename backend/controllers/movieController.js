@@ -190,6 +190,7 @@ if (mongoose.Types.ObjectId.isValid(id)) {
       posterUrl: tmdbService.getImageUrl(tmdbMovie.poster_path),
       backdropUrl: tmdbService.getImageUrl(tmdbMovie.backdrop_path, 'w1280'),
       credits: tmdbMovie.credits,
+      videos: tmdbMovie.videos,
     };
 
     res.json({
