@@ -254,36 +254,3 @@ const Home = () => {
 };
 
 export default Home;
-        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-3xl font-semibold text-white">Popular movies</h2>
-            <p className="mt-2 text-slate-400">Browse crowd favorites, latest releases, and top-rated titles.</p>
-          </div>
-          <p className="text-sm uppercase tracking-[0.35em] text-rose-400">Updated daily</p>
-        </div>
-
-        {error && (
-          <div className="mt-6 p-4 rounded-lg bg-red-500/20 border border-red-500/50 text-red-200">
-            {error}
-          </div>
-        )}
-
-        {loading ? (
-          <div className="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-3 animate-pulse">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="rounded-xl bg-slate-800 h-64"></div>
-            ))}
-          </div>
-        ) : (
-          <div className="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {popularMovies.slice(0, 6).map((movie) => (
-              <MovieCard key={movie.id || movie._id} movie={movie} />
-            ))}
-          </div>
-        )}
-      </section>
-    </main>
-  );
-};
-
-export default Home;
