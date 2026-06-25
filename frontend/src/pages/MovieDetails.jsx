@@ -8,7 +8,7 @@ const MovieDetails = () => {
   const [movie, setMovie] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [similar, setSimilar] = useState([]);
-  const [comment, setComment] = useState('');
+  const loadMovie = [comment, setComment] = useState('');
   const [rating, setRating] = useState(8);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -18,17 +18,22 @@ const MovieDetails = () => {
   const loadMovie = async () => {
   try {
     setLoading(true);
+
     const response = await movieAPI.getMovie(id);
     const data = response.data;
 
-    console.log(data.movie);
-    console.log(data.movie.videos);
+    console.log('Movie:', data.movie);
+    console.log('Videos:', data.movie?.videos);
 
     setMovie(data.movie);
     setReviews(data.reviews || []);
     setSimilar(data.similar || []);
+    setError('');
   } catch (error) {
-    ...
+    console.error('Error loading movie:', error);
+    setError('Failed to load movie details');
+  } finally {
+    setLoading(false);
   }
 };
 
