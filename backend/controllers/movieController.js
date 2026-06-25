@@ -1,7 +1,7 @@
 const Movie = require('../models/Movie');
 const Review = require('../models/Review');
 const tmdbService = require('../services/tmdbService');
-
+const mongoose = require('mongoose');
 /**
  * Search for movies from TMDB API
  * Includes both TMDB data and local MongoDB reviews/ratings
@@ -139,7 +139,11 @@ exports.getMovie = async (req, res, next) => {
     const { id } = req.params;
 
     // First try to find in local MongoDB
-    let movie = await Movie.findById(id);
+    let movie = null;
+
+if (mongoose.Types.ObjectId.isValid(id)) {
+  movie = await Movie.findById(id);
+}
     let reviews = [];
     let similar = [];
 
