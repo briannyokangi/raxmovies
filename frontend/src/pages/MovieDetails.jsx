@@ -139,11 +139,8 @@ import MovieCard from '../components/MovieCard';
 
   const trailer =
   movie.trailer ||
-  movie.videos?.results?.find(
-    (video) =>
-      video.site === 'YouTube' &&
-      video.type === 'Trailer'
-  );
+  movie.videoUrl ||
+  null;
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -170,6 +167,9 @@ import MovieCard from '../components/MovieCard';
               )}
               <div className="space-y-4">
                 <h1 className="text-4xl font-semibold text-white">{title}</h1>
+                <p className="text-green-500">
+                 Trailer: {movie.trailer}
+                </p>
                 <p className="text-slate-400 line-clamp-4">{description}</p>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {releaseYear && (
@@ -207,12 +207,14 @@ import MovieCard from '../components/MovieCard';
                     {isWatchlist ? '✓ Remove from watchlist' : '+ Add to watchlist'}
                   </button>
                   {trailer && (
-                   <button
-                   onClick={() => setShowTrailer(true)}
-                   className="rounded-full border border-rose-500 px-5 py-3 text-sm text-rose-200 transition hover:bg-rose-500/10"
-                  >
-                   ▶ Watch Movie
-                 </button>
+                   <a
+                    href={trailer}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-full bg-red-600 px-5 py-3 text-white font-semibold hover:bg-red-500"
+                 >
+                   ▶ Play Movie
+                 </a>
                  )}
                 </div>
               </div>
