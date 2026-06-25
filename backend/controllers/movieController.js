@@ -65,8 +65,9 @@ exports.getAllMovies = async (req, res, next) => {
     const movies = await Movie.find().sort({ createdAt: -1 }).limit(20);
     res.json({ movies });
   } catch (error) {
-    next(error);
-  }
+  console.error("getMovie error:", error);
+  next(error);
+}
 };
 
 /**
@@ -92,8 +93,9 @@ exports.getFeaturedMovies = async (req, res, next) => {
 
     res.json({ movies: enrichedMovies });
   } catch (error) {
-    next(error);
-  }
+  console.error("getMovie error:", error);
+  next(error);
+}
 };
 
 /**
@@ -123,8 +125,9 @@ exports.getPopularMovies = async (req, res, next) => {
       page: parseInt(page),
     });
   } catch (error) {
-    next(error);
-  }
+  console.error("getMovie error:", error);
+  next(error);
+}
 };
 
 
@@ -192,8 +195,9 @@ exports.getMovie = async (req, res, next) => {
       source: 'tmdb',
     });
   } catch (error) {
-    next(error);
-  }
+  console.error("getMovie error:", error);
+  next(error);
+}
 };
 
 exports.createMovie = async (req, res, next) => {
@@ -230,8 +234,9 @@ exports.createMovie = async (req, res, next) => {
     });
     res.status(201).json(movie);
   } catch (error) {
-    next(error);
-  }
+  console.error("getMovie error:", error);
+  next(error);
+}
 };
 
 exports.updateMovie = async (req, res, next) => {
@@ -260,8 +265,9 @@ exports.updateMovie = async (req, res, next) => {
     if (!movie) return res.status(404).json({ message: 'Movie not found.' });
     res.json(movie);
   } catch (error) {
-    next(error);
-  }
+  console.error("getMovie error:", error);
+  next(error);
+}
 };
 
 exports.deleteMovie = async (req, res, next) => {
@@ -270,8 +276,9 @@ exports.deleteMovie = async (req, res, next) => {
     if (!movie) return res.status(404).json({ message: 'Movie not found.' });
     res.json({ message: 'Movie removed.' });
   } catch (error) {
-    next(error);
-  }
+  console.error("getMovie error:", error);
+  next(error);
+}
 };
 
 exports.toggleFavorite = async (req, res, next) => {
@@ -287,8 +294,9 @@ exports.toggleFavorite = async (req, res, next) => {
     await user.save();
     res.json({ favorites: user.favorites });
   } catch (error) {
-    next(error);
-  }
+  console.error("getMovie error:", error);
+  next(error);
+}
 };
 
 exports.toggleWatchlist = async (req, res, next) => {
@@ -304,6 +312,7 @@ exports.toggleWatchlist = async (req, res, next) => {
     await user.save();
     res.json({ watchlist: user.watchlist });
   } catch (error) {
-    next(error);
-  }
+  console.error("getMovie error:", error);
+  next(error);
+}
 };
