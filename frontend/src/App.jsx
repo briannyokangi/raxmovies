@@ -9,6 +9,10 @@ import Register from './pages/Register';
 import Profile from './pages/Profile';
 import Watchlist from './pages/Watchlist';
 import AdminDashboard from './pages/AdminDashboard';
+import About from './pages/About';
+import Privacy from './pages/Privacy';
+import Contact from './pages/Contact';
+import Terms from './pages/Terms';
 
 function App() {
   return (
@@ -24,6 +28,10 @@ function App() {
           <Route path="/profile" element={<Profile />} />
           <Route path="/watchlist" element={<Watchlist />} />
           <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="/terms" element={<Terms />} />
         </Routes>
         <Footer />
       </div>

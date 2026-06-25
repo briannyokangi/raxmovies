@@ -5,67 +5,53 @@ const MovieCard = ({ movie }) => {
   const id = movie.id || movie._id;
   const poster = movie.posterUrl || movie.poster;
   const title = movie.title;
-  const description = movie.overview || movie.description;
-  const genres = movie.genres || movie.genre || [];
-  const genreText = Array.isArray(genres)
-    ? genres.map(g => typeof g === 'string' ? g : g.name).join(', ')
-    : genres;
-  
-  const year = movie.release_date
-    ? new Date(movie.release_date).getFullYear()
-    : movie.year;
-  
   const rating = movie.vote_average || movie.rating;
 
   return (
-    <div className="group relative overflow-hidden rounded-3xl bg-slate-900 shadow-2xl shadow-black/40 transition duration-300 hover:-translate-y-1 hover:shadow-rose-500/30">
-      {poster && (
-        <img
-          src={poster}
-          alt={title}
-          className="h-72 w-full object-cover brightness-90 transition duration-300 group-hover:scale-105"
-        />
-      )}
-      <Link
-       to={`/movies/${id}`}
-       className="absolute inset-0 flex items-center justify-center opacity-0 transition duration-300 group-hover:opacity-100"
+    <Link
+      to={`/movies/${id}`}
+      className="group relative overflow-hidden rounded-lg bg-slate-800 transition-all duration-300 transform hover:scale-105 hover:z-10 shadow-lg hover:shadow-2xl hover:shadow-black/50 active:scale-95"
     >
-      <div className="rounded-full bg-black/70 p-5 text-4xl text-white">
-       ▶
-      </div>
-      </Link>
-
-      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent" />
-      <div className="relative p-5">
-        {genreText && (
-          <p className="text-xs uppercase tracking-[0.3em] text-rose-400">
-            {genreText}
-          </p>
+      {/* Poster Image with 2:3 aspect ratio */}
+      <div className="relative w-full aspect-[2/3] overflow-hidden bg-slate-900">
+        {poster ? (
+          <img
+            src={poster}
+            alt={title}
+            className="w-full h-full object-cover brightness-90 group-hover:brightness-110 transition duration-300"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center">
+            <span className="text-slate-500 text-4xl">🎬</span>
+          </div>
         )}
-        <h3 className="mt-2 text-xl font-semibold text-white line-clamp-2">
+
+        {/* Play Button Overlay */}
+        <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition duration-300">
+          <div className="text-6xl text-white opacity-0 group-hover:opacity-100 transition duration-300 transform scale-75 group-hover:scale-100 drop-shadow-lg">
+            ▶
+          </div>
+        </div>
+
+        {/* Rating Badge */}
+        {rating && (
+          <div className="absolute top-2 right-2 rounded-full bg-black/80 px-3 py-1 text-sm font-bold text-amber-300 backdrop-blur-sm">
+            {Number(rating).toFixed(1)}
+          </div>
+        )}
+
+        {/* Gradient Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition duration-300" />
+      </div>
+
+      {/* Title Section */}
+      <div className="absolute bottom-0 left-0 right-0 p-3 md:p-4 bg-gradient-to-t from-black via-black/80 to-transparent transform translate-y-2 group-hover:translate-y-0 transition duration-300">
+        <h3 className="text-xs md:text-sm font-bold text-white line-clamp-2 leading-tight">
           {title}
         </h3>
-        {description && (
-          <p className="mt-2 text-sm leading-6 text-slate-300 line-clamp-2">
-            {description}
-          </p>
-        )}
-        <div className="mt-4 flex items-center justify-between text-sm text-slate-300">
-          {year && <span>{year}</span>}
-          {rating && (
-            <span className="rounded-full bg-slate-800 px-3 py-1 text-amber-300">
-              {Number(rating).toFixed(1)}/10
-            </span>
-          )}
-        </div>
-        <Link
-          to={`/movies/${id}`}
-          className="mt-4 inline-flex items-center rounded-full bg-rose-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-400"
-        >
-          ▶ Play
-        </Link>
       </div>
-    </div>
+    </Link>
   );
 };
 
