@@ -138,11 +138,12 @@ import MovieCard from '../components/MovieCard';
   const runtime = movie.runtime || movie.duration;
 
   const trailer =
+  movie.trailer ||
   movie.videos?.results?.find(
     (video) =>
       video.site === 'YouTube' &&
       video.type === 'Trailer'
-  ) || null;
+  );
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -210,7 +211,7 @@ import MovieCard from '../components/MovieCard';
                    onClick={() => setShowTrailer(true)}
                    className="rounded-full border border-rose-500 px-5 py-3 text-sm text-rose-200 transition hover:bg-rose-500/10"
                   >
-                   ▶ Watch Trailer
+                   ▶ Watch Movie
                  </button>
                  )}
                 </div>
@@ -361,12 +362,16 @@ import MovieCard from '../components/MovieCard';
 
       <div className="aspect-video overflow-hidden rounded-2xl">
         <iframe
-          className="h-full w-full"
-          src={`https://www.youtube.com/embed/${trailer.key}?autoplay=1`}
-          title="Movie Trailer"
-          allow="autoplay; encrypted-media"
-          allowFullScreen
-        />
+         className="h-full w-full"
+         src={
+          typeof trailer === 'string'
+           ? trailer
+           : `https://www.youtube.com/embed/${trailer.key}?autoplay=1`
+       }
+         title="Movie Player"
+         allow="autoplay; encrypted-media"
+         allowFullScreen
+       />
       </div>
     </div>
   </div>

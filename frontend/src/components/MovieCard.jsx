@@ -26,6 +26,15 @@ const MovieCard = ({ movie }) => {
           className="h-72 w-full object-cover brightness-90 transition duration-300 group-hover:scale-105"
         />
       )}
+      <Link
+       to={`/movies/${id}`}
+       className="absolute inset-0 flex items-center justify-center opacity-0 transition duration-300 group-hover:opacity-100"
+    >
+      <div className="rounded-full bg-black/70 p-5 text-4xl text-white">
+       ▶
+      </div>
+      </Link>
+
       <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent" />
       <div className="relative p-5">
         {genreText && (
@@ -53,7 +62,7 @@ const MovieCard = ({ movie }) => {
           to={`/movies/${id}`}
           className="mt-4 inline-flex items-center rounded-full bg-rose-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-400"
         >
-          View details
+          ▶ Play
         </Link>
       </div>
     </div>
