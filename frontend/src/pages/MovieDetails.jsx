@@ -3,12 +3,12 @@ import { useParams } from 'react-router-dom';
 import { movieAPI, reviewAPI, authAPI } from '../services/api';
 import MovieCard from '../components/MovieCard';
 
-const MovieDetails = () => {
+  const MovieDetails = () => {
   const { id } = useParams();
   const [movie, setMovie] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [similar, setSimilar] = useState([]);
-  const loadMovie = [comment, setComment] = useState('');
+  const [comment, setComment] = useState('');
   const [rating, setRating] = useState(8);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
