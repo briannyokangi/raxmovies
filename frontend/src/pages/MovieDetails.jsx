@@ -16,21 +16,21 @@ const MovieDetails = () => {
   const [submitting, setSubmitting] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
   const loadMovie = async () => {
-    try {
-      setLoading(true);
-      const response = await movieAPI.getMovie(id);
-      const data = response.data;
-      
-      setMovie(data.movie);
-      setReviews(data.reviews || []);
-      setSimilar(data.similar || []);
-    } catch (error) {
-      console.error('Error loading movie:', error);
-      setError('Failed to load movie details');
-    } finally {
-      setLoading(false);
-    }
-  };
+  try {
+    setLoading(true);
+    const response = await movieAPI.getMovie(id);
+    const data = response.data;
+
+    console.log(data.movie);
+    console.log(data.movie.videos);
+
+    setMovie(data.movie);
+    setReviews(data.reviews || []);
+    setSimilar(data.similar || []);
+  } catch (error) {
+    ...
+  }
+};
 
   const loadProfile = async () => {
     try {
@@ -131,6 +131,7 @@ const MovieDetails = () => {
   const genres = movie.genres || movie.genre || [];
   const cast = movie.credits?.cast?.slice(0, 10) || movie.cast || [];
   const runtime = movie.runtime || movie.duration;
+
   const trailer =
   movie.videos?.results?.find(
     (video) =>
@@ -199,14 +200,14 @@ const MovieDetails = () => {
                   >
                     {isWatchlist ? '✓ Remove from watchlist' : '+ Add to watchlist'}
                   </button>
-                  {movie.credits?.videos?.length > 0 && (
+                  {trailer && (
                    <button
                    onClick={() => setShowTrailer(true)}
                    className="rounded-full border border-rose-500 px-5 py-3 text-sm text-rose-200 transition hover:bg-rose-500/10"
                   >
                    ▶ Watch Trailer
-                   </button>
-                  )}
+                 </button>
+                 )}
                 </div>
               </div>
             </div>
@@ -337,7 +338,7 @@ const MovieDetails = () => {
           </aside>
         </div>
       </section>
-      {showTrailer && movie.credits?.videos?.length > 0 && (
+      {showTrailer && trailer && (
   <div
     className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
     onClick={() => setShowTrailer(false)}
@@ -356,7 +357,7 @@ const MovieDetails = () => {
       <div className="aspect-video overflow-hidden rounded-2xl">
         <iframe
           className="h-full w-full"
-          src={`https://www.youtube.com/embed/${movie.credits.videos[0].key}?autoplay=1`}
+          src={`https://www.youtube.com/embed/${trailer.key}?autoplay=1`}
           title="Movie Trailer"
           allow="autoplay; encrypted-media"
           allowFullScreen
