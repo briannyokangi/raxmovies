@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { movieAPI, reviewAPI, authAPI } from '../services/api';
 import MovieCard from '../components/MovieCard';
+import TrailerModal from '../components/TrailerModal';
 
 const MovieDetails = () => {
   const { id } = useParams();
@@ -14,7 +15,7 @@ const MovieDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [showTrailer, setShowTrailer] = useState(false);
+  const [isTrailerOpen, setIsTrailerOpen] = useState(false);
 
   const loadMovie = async () => {
     try {
@@ -47,6 +48,27 @@ const MovieDetails = () => {
     loadMovie();
     loadProfile();
   }, [id]);
+
+  useEffect(() => {
+    if (!movie) return;
+
+    const storedContinueWatching = localStorage.getItem('rax_continue_watching');
+    const continueWatchingItems = storedContinueWatching ? JSON.parse(storedContinueWatching) : [];
+    const updatedContinueWatching = [
+      { id: movie._id || movie.id, title: movie.title, poster: movie.posterUrl || movie.poster, releaseYear: movie.release_date ? new Date(movie.release_date).getFullYear() : movie.year, rating: movie.vote_average || movie.rating, genre: (movie.genres || movie.genre || []).map((item) => (typeof item === 'string' ? item : item.name)).join(', ') },
+      ...continueWatchingItems.filter((item) => (item.id || item._id) !== (movie._id || movie.id)),
+    ].slice(0, 6);
+
+    const storedHistory = localStorage.getItem('rax_view_history');
+    const historyItems = storedHistory ? JSON.parse(storedHistory) : [];
+    const updatedHistory = [
+      { id: movie._id || movie.id, title: movie.title, poster: movie.posterUrl || movie.poster, releaseYear: movie.release_date ? new Date(movie.release_date).getFullYear() : movie.year, rating: movie.vote_average || movie.rating, genre: (movie.genres || movie.genre || []).map((item) => (typeof item === 'string' ? item : item.name)).join(', ') },
+      ...historyItems.filter((item) => (item.id || item._id) !== (movie._id || movie.id)),
+    ].slice(0, 10);
+
+    localStorage.setItem('rax_continue_watching', JSON.stringify(updatedContinueWatching));
+    localStorage.setItem('rax_view_history', JSON.stringify(updatedHistory));
+  }, [movie]);
 
   const handleReview = async (e) => {
     e.preventDefault();
@@ -133,12 +155,13 @@ const MovieDetails = () => {
   const genres = movie.genres || movie.genre || [];
   const cast = movie.credits?.cast?.slice(0, 10) || movie.cast || [];
   const runtime = movie.runtime || movie.duration;
-  const trailer = movie.trailer || movie.videoUrl || null;
-
-  const openTrailer = (e) => {
-    if (typeof trailer === 'string') return; // external link handled by anchor
-    setShowTrailer(true);
-  };
+  const trailerCandidate = movie.trailer || movie.trailerUrl || movie.videoUrl || movie.videos?.results?.find((video) => video.type === 'Trailer' || video.site === 'YouTube') || null;
+  const trailer = typeof trailerCandidate === 'string'
+    ? trailerCandidate
+    : trailerCandidate?.key
+      ? `https://www.youtube.com/watch?v=${trailerCandidate.key}`
+      : null;
+  const director = movie.director || movie.credits?.crew?.find((person) => person.job === 'Director')?.name || 'TBA';
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -188,12 +211,8 @@ const MovieDetails = () => {
             )}
 
             <div className="flex flex-wrap gap-3 pt-4">
-              {trailer && typeof trailer === 'string' ? (
-                <a href={trailer} target="_blank" rel="noopener noreferrer" className="px-6 md:px-8 py-3 md:py-4 rounded-lg bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white font-semibold flex items-center gap-2 transition-all duration-300 active:scale-95 shadow-lg shadow-rose-500/30">
-                  <span className="text-xl">▶</span> Watch Now
-                </a>
-              ) : trailer ? (
-                <button onClick={openTrailer} className="px-6 md:px-8 py-3 md:py-4 rounded-lg bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white font-semibold flex items-center gap-2 transition-all duration-300 active:scale-95 shadow-lg shadow-rose-500/30">
+              {trailer ? (
+                <button onClick={() => setIsTrailerOpen(true)} className="px-6 md:px-8 py-3 md:py-4 rounded-lg bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-semibold flex items-center gap-2 transition-all duration-300 active:scale-95 shadow-lg shadow-sky-500/20">
                   <span className="text-xl">▶</span> Play Trailer
                 </button>
               ) : null}
@@ -265,6 +284,8 @@ const MovieDetails = () => {
                 {voteAverage && (<p><span className="font-semibold text-white">Rating:</span> {Number(voteAverage).toFixed(1)}/10</p>)}
                 {genres && genres.length > 0 && (<p><span className="font-semibold text-white">Genre:</span> {genres.map(g => typeof g === 'string' ? g : g.name).join(', ')}</p>)}
                 {releaseYear && (<p><span className="font-semibold text-white">Year:</span> {releaseYear}</p>)}
+                {director && (<p><span className="font-semibold text-white">Director:</span> {director}</p>)}
+                {runtime && (<p><span className="font-semibold text-white">Runtime:</span> {runtime} min</p>)}
                 {movie.status && (<p><span className="font-semibold text-white">Status:</span> {movie.status}</p>)}
               </div>
             </div>
@@ -279,16 +300,7 @@ const MovieDetails = () => {
         </div>
       </section>
 
-      {showTrailer && trailer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" onClick={() => setShowTrailer(false)}>
-          <div className="relative w-[90%] max-w-5xl" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setShowTrailer(false)} className="absolute -top-12 right-0 text-4xl text-white">✕</button>
-            <div className="aspect-video overflow-hidden rounded-2xl">
-              <iframe className="h-full w-full" src={typeof trailer === 'string' ? trailer : `https://www.youtube.com/embed/${trailer.key}?autoplay=1`} title="Movie Player" allow="autoplay; encrypted-media" allowFullScreen />
-            </div>
-          </div>
-        </div>
-      )}
+      <TrailerModal isOpen={isTrailerOpen} onClose={() => setIsTrailerOpen(false)} trailerUrl={trailer} title={title} />
     </main>
   );
 };

@@ -1,13 +1,34 @@
+const path = require('path');
+const dotenv = require('dotenv');
+
+dotenv.config({ path: path.resolve(__dirname, '.env') });
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const dotenv = require('dotenv');
+
+const MONGO_URI = process.env.MONGO_URI;
+const TMDB_API_KEY = process.env.TMDB_API_KEY;
+
+if (!MONGO_URI) {
+  console.error('✗ MONGO_URI is not defined in backend/.env');
+  process.exit(1);
+}
+
+if (!TMDB_API_KEY) {
+  console.error('✗ TMDB_API_KEY is not defined in backend/.env');
+  process.exit(1);
+}
+
+console.log('✓ Loaded backend/.env');
+console.log('✓ MongoDB URI is present');
+console.log('✓ TMDB API key is present');
+
 const authRoutes = require('./routes/authRoutes');
 const movieRoutes = require('./routes/movieRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const adminRoutes = require('./routes/adminRoutes');
-
-dotenv.config();
+const { sampleMovies } = require('./data/sampleMovies');
 
 const app = express();
 
@@ -45,7 +66,12 @@ app.use('/api/admin', adminRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    database: global.dbConnected ? 'connected' : 'fallback',
+    sampleMovies: sampleMovies.length,
+  });
 });
 
 // Error handling middleware
@@ -55,19 +81,31 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/raxmovies';
+
+mongoose.set('strictQuery', false);
 
 mongoose
-  .connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .connect(MONGO_URI, {
+    serverSelectionTimeoutMS: 15000,
+    socketTimeoutMS: 45000,
+  })
   .then(() => {
-    console.log('✓ Connected to MongoDB');
+    global.dbConnected = true;
+    console.log('✓ Connected to MongoDB Atlas');
     app.listen(PORT, () => {
       console.log(`✓ Server running on port ${PORT}`);
       console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
     });
   })
   .catch((error) => {
-    console.error('✗ MongoDB connection error:', error);
+    global.dbConnected = false;
+    console.error('✗ MongoDB connection error, Atlas unavailable');
+    console.error('Error name:', error.name);
+    console.error('Error code:', error.code);
+    console.error('Error message:', error.message);
+    if (error.reason) console.error('Error reason:', error.reason);
+    console.error(error.stack);
+    console.error('✗ Backend will not start without a MongoDB Atlas connection.');
     process.exit(1);
   });
 

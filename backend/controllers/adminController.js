@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Review = require('../models/Review');
+const Movie = require('../models/Movie');
 
 exports.listUsers = async (req, res, next) => {
   try {
@@ -43,8 +44,29 @@ exports.deleteReviewByAdmin = async (req, res, next) => {
     const review = await Review.findById(req.params.id);
     if (!review) return res.status(404).json({ message: 'Review not found.' });
 
-    await review.remove();
+    await review.deleteOne();
     res.json({ message: 'Review deleted by admin.' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.listMovies = async (req, res, next) => {
+  try {
+    const movies = await Movie.find().sort({ createdAt: -1 });
+    res.json(movies);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.deleteMovieByAdmin = async (req, res, next) => {
+  try {
+    const movie = await Movie.findById(req.params.id);
+    if (!movie) return res.status(404).json({ message: 'Movie not found.' });
+
+    await movie.deleteOne();
+    res.json({ message: 'Movie deleted.' });
   } catch (error) {
     next(error);
   }

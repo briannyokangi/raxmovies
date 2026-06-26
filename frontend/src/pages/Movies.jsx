@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import MovieCard from '../components/MovieCard';
 import SearchBar from '../components/SearchBar';
 import SkeletonLoader from '../components/SkeletonLoader';
-import { movieAPI } from '../services/api';
+import { movieService } from '../services/movieService';
 
 const genres = [
   { id: 28, name: 'Action', emoji: '💥' },
@@ -35,29 +35,24 @@ const Movies = () => {
       setLoading(true);
       setError('');
 
-      let response;
-      if (search) {
-        response = await movieAPI.searchMovies(search, page);
-      } else if (selectedGenre) {
-        response = await movieAPI.getMovies({ genre: selectedGenre, page });
-      } else {
-        response = await movieAPI.getPopularMovies(page);
-      }
+      const params = { page, genre: selectedGenre, search };
+      const response = search
+        ? await movieService.searchMovies(search, page)
+        : selectedGenre
+          ? await movieService.getMovies(params)
+          : await movieService.getPopularMovies(page);
 
-      setMovies(response.data.movies || []);
-      setTotalPages(response.data.totalPages || 1);
+      setMovies(response.movies || []);
+      setTotalPages(response.totalPages || 1);
 
-      // Update URL params
-      const params = new URLSearchParams();
-      if (search) params.set('search', search);
-      if (selectedGenre) params.set('genre', selectedGenre);
-      if (page > 1) params.set('page', page);
-      setSearchParams(params);
-
-      // Scroll to top
+      const paramsObj = new URLSearchParams();
+      if (search) paramsObj.set('search', search);
+      if (selectedGenre) paramsObj.set('genre', selectedGenre);
+      if (page > 1) paramsObj.set('page', page);
+      setSearchParams(paramsObj);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (error) {
-      console.error('Error loading movies:', error);
+    } catch (err) {
+      console.error('Error loading movies:', err);
       setError('Failed to load movies. Please try again.');
     } finally {
       setLoading(false);
@@ -71,70 +66,33 @@ const Movies = () => {
 
   const handleGenreClick = (genreId) => {
     const genreStr = String(genreId);
-    if (selectedGenre === genreStr) {
-      setSelectedGenre('');
-    } else {
-      setSelectedGenre(genreStr);
-    }
+    setSelectedGenre((prev) => (prev === genreStr ? '' : genreStr));
     setPage(1);
   };
 
-  const selectedGenreName = genres.find(g => String(g.id) === selectedGenre)?.name || '';
+  const selectedGenreName = genres.find((g) => String(g.id) === selectedGenre)?.name || '';
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
-      {/* Header Section */}
-      <section className="container mx-auto px-4 py-12 md:py-16 space-y-6">
-        {/* Title */}
+      <section className="container mx-auto space-y-6 px-4 py-10 md:px-6 md:py-14">
         <div className="space-y-3">
-          <h1 className="text-3xl md:text-5xl font-bold text-white">
-            Browse Movies
-          </h1>
-          <p className="text-slate-400 text-lg">
-            {search
-              ? `Search results for "${search}"`
-              : selectedGenreName
-              ? `Browse ${selectedGenreName} movies`
-              : 'Discover thousands of movies from TMDB'}
+          <p className="text-sm font-semibold uppercase tracking-[0.35em] text-sky-400">Browse</p>
+          <h1 className="text-3xl font-bold text-white md:text-5xl">Watch a premium collection</h1>
+          <p className="max-w-2xl text-lg text-slate-400">
+            {search ? `Search results for "${search}"` : selectedGenreName ? `Browse ${selectedGenreName} movies` : 'Discover a curated selection of cinematic highlights.'}
           </p>
         </div>
 
-        {/* Search Bar */}
-        <SearchBar
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onSubmit={handleSearch}
-        />
+        <SearchBar value={search} onChange={(e) => setSearch(e.target.value)} onSubmit={handleSearch} />
 
-        {/* Genre Filter */}
         <div className="space-y-3">
-          <p className="text-sm font-semibold text-slate-300 uppercase tracking-widest">
-            Filter by Genre
-          </p>
+          <p className="text-sm font-semibold uppercase tracking-[0.35em] text-slate-300">Filter by genre</p>
           <div className="flex flex-wrap gap-2 md:gap-3">
-            <button
-              onClick={() => {
-                setSelectedGenre('');
-                setPage(1);
-              }}
-              className={`px-4 md:px-5 py-2 md:py-3 rounded-lg font-semibold text-sm md:text-base transition-all duration-300 active:scale-95 ${
-                !selectedGenre
-                  ? 'bg-rose-600 text-white shadow-lg shadow-rose-500/30'
-                  : 'border border-slate-700 text-slate-300 hover:border-slate-500'
-              }`}
-            >
+            <button onClick={() => { setSelectedGenre(''); setPage(1); }} className={`rounded-full px-4 py-2 text-sm font-semibold transition ${!selectedGenre ? 'bg-sky-600 text-white' : 'border border-slate-700 text-slate-300 hover:border-sky-500 hover:text-white'}`}>
               All Genres
             </button>
             {genres.map((genre) => (
-              <button
-                key={genre.id}
-                onClick={() => handleGenreClick(genre.id)}
-                className={`px-4 md:px-5 py-2 md:py-3 rounded-lg font-semibold text-sm md:text-base transition-all duration-300 active:scale-95 whitespace-nowrap ${
-                  selectedGenre === String(genre.id)
-                    ? 'bg-rose-600 text-white shadow-lg shadow-rose-500/30'
-                    : 'border border-slate-700 text-slate-300 hover:border-slate-500'
-                }`}
-              >
+              <button key={genre.id} onClick={() => handleGenreClick(genre.id)} className={`rounded-full px-4 py-2 text-sm font-semibold transition ${selectedGenre === String(genre.id) ? 'bg-sky-600 text-white' : 'border border-slate-700 text-slate-300 hover:border-sky-500 hover:text-white'}`}>
                 {genre.emoji} {genre.name}
               </button>
             ))}
@@ -142,69 +100,38 @@ const Movies = () => {
         </div>
       </section>
 
-      {/* Error Message */}
-      {error && (
-        <section className="container mx-auto px-4 pb-8">
-          <div className="p-4 rounded-lg bg-red-500/20 border border-red-500/50 text-red-200 flex items-center gap-3">
-            <span className="text-2xl">⚠️</span>
-            <span>{error}</span>
-          </div>
-        </section>
-      )}
+      {error && <section className="container mx-auto px-4 pb-6"><div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-200">{error}</div></section>}
 
-      {/* Movies Grid */}
-      <section className="container mx-auto px-4 pb-16">
+      <section className="container mx-auto px-4 pb-16 md:px-6">
         {loading ? (
-          <SkeletonLoader count={12} variant="poster" />
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <SkeletonLoader count={9} variant="poster" />
+          </div>
         ) : movies.length > 0 ? (
           <>
-            {/* Grid */}
-            <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {movies.map((movie) => (
                 <MovieCard key={movie.id || movie._id} movie={movie} />
               ))}
             </div>
 
-            {/* Pagination */}
             {totalPages > 1 && (
-              <div className="mt-12 md:mt-16 flex items-center justify-center gap-4">
-                <button
-                  onClick={() => setPage(Math.max(1, page - 1))}
-                  disabled={page === 1}
-                  className="px-5 md:px-6 py-2 md:py-3 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:bg-slate-900 disabled:cursor-not-allowed text-white font-semibold transition-all duration-300 active:scale-95"
-                >
+              <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+                <button onClick={() => setPage((prev) => Math.max(1, prev - 1))} disabled={page === 1} className="rounded-full bg-slate-800 px-5 py-2.5 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
                   ← Previous
                 </button>
-                <div className="flex items-center gap-3">
-                  <span className="text-slate-300 text-sm md:text-base">
-                    Page
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="px-3 py-1 md:py-2 rounded-lg bg-rose-600 text-white font-semibold">
-                      {page}
-                    </span>
-                    <span className="text-slate-400">/</span>
-                    <span className="px-3 py-1 md:py-2 rounded-lg bg-slate-800 text-slate-300 font-semibold">
-                      {totalPages}
-                    </span>
-                  </div>
+                <div className="rounded-full border border-slate-800 bg-slate-900/70 px-4 py-2 text-sm text-slate-300">
+                  Page {page} of {totalPages}
                 </div>
-                <button
-                  onClick={() => setPage(Math.min(totalPages, page + 1))}
-                  disabled={page === totalPages}
-                  className="px-5 md:px-6 py-2 md:py-3 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:bg-slate-900 disabled:cursor-not-allowed text-white font-semibold transition-all duration-300 active:scale-95"
-                >
+                <button onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))} disabled={page === totalPages} className="rounded-full bg-slate-800 px-5 py-2.5 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
                   Next →
                 </button>
               </div>
             )}
           </>
         ) : (
-          <div className="py-16 text-center space-y-4">
-            <div className="text-6xl mb-4">🎬</div>
-            <p className="text-slate-400 text-lg">
-              No movies found. Try a different search or filter.
-            </p>
+          <div className="rounded-3xl border border-dashed border-slate-700 bg-slate-900/50 px-6 py-16 text-center text-slate-400">
+            No movies found. Try a different search or filter.
           </div>
         )}
       </section>

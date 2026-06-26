@@ -1,3 +1,7 @@
+const path = require('path');
+const dotenv = require('dotenv');
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
 const axios = require('axios');
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';

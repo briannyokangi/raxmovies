@@ -1,254 +1,475 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import MovieCard from '../components/MovieCard';
 import SearchBar from '../components/SearchBar';
-import ContentRow from '../components/ContentRow';
 import SkeletonLoader from '../components/SkeletonLoader';
-import { movieAPI } from '../services/api';
+import { movieService } from '../services/movieService';
+
+const genreOptions = ['Action', 'Comedy', 'Horror', 'Romance', 'Sci-Fi', 'Drama', 'Thriller', 'Animation'];
+const moodPrompts = [
+  { label: 'I’m in the mood for horror', query: 'horror' },
+  { label: 'Show me funny action movies', query: 'funny action' },
+  { label: 'Give me a cozy romance', query: 'romance' },
+  { label: 'Something thrilling from 2024', query: 'thriller 2024' },
+];
+
+const normalizeGenreList = (movie) => {
+  const raw = movie.genre || movie.genres || '';
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') return raw.split(',').map((item) => item.trim()).filter(Boolean);
+  return [];
+};
+
+const buildHistoryRecommendations = (movies, historyItems) => {
+  const historyGenres = historyItems.flatMap((item) => normalizeGenreList(item).map((genre) => genre.toLowerCase()));
+  const historyYears = historyItems.map((item) => Number(item.releaseYear)).filter(Boolean);
+
+  return [...movies]
+    .map((movie) => {
+      const genres = normalizeGenreList(movie).map((genre) => genre.toLowerCase());
+      const genreMatches = genres.reduce((score, genre) => score + (historyGenres.includes(genre) ? 2 : 0), 0);
+      const yearMatch = historyYears.includes(Number(movie.releaseYear)) ? 1 : 0;
+      const ratingBoost = Number(movie.rating || movie.vote_average || 0) / 10;
+      return { movie, score: genreMatches + yearMatch + ratingBoost };
+    })
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8)
+    .map(({ movie }) => movie);
+};
+
+const getAssistantResults = (movies, query) => {
+  const normalized = query.toLowerCase();
+  const genreMatches = normalizeGenreList(movies[0] || {}).length > 0 ? [] : [];
+
+  const explicitGenres = ['action', 'comedy', 'horror', 'romance', 'sci-fi', 'thriller', 'drama', 'adventure'];
+  const yearMatch = normalized.match(/\b(19|20)\d{2}\b/)?.[0];
+  const selectedGenre = explicitGenres.find((genre) => normalized.includes(genre));
+  const moodKeyword = normalized.includes('horror') ? 'Horror' : normalized.includes('funny') || normalized.includes('comedy') ? 'Comedy' : normalized.includes('romance') ? 'Romance' : normalized.includes('thriller') ? 'Thriller' : normalized.includes('sci-fi') || normalized.includes('sci fi') ? 'Sci-Fi' : selectedGenre ? selectedGenre.charAt(0).toUpperCase() + selectedGenre.slice(1) : '';
+
+  return [...movies]
+    .filter((movie) => {
+      const genres = normalizeGenreList(movie).map((genre) => genre.toLowerCase());
+      const title = (movie.title || '').toLowerCase();
+      const matchesGenre = moodKeyword ? genres.some((genre) => genre.includes(moodKeyword.toLowerCase())) : false;
+      const matchesYear = yearMatch ? Number(movie.releaseYear) === Number(yearMatch) : true;
+      const matchesText = title.includes(normalized) || genres.some((genre) => genre.includes(normalized));
+      return matchesYear && (matchesGenre || matchesText || !query.trim());
+    })
+    .sort((a, b) => Number(b.rating || b.vote_average || 0) - Number(a.rating || a.vote_average || 0))
+    .slice(0, 8);
+};
 
 const Home = () => {
+  const [movies, setMovies] = useState([]);
   const [featuredMovies, setFeaturedMovies] = useState([]);
   const [trendingMovies, setTrendingMovies] = useState([]);
-  const [popularMovies, setPopularMovies] = useState([]);
-  const [actionMovies, setActionMovies] = useState([]);
-  const [dramaMovies, setDramaMovies] = useState([]);
+  const [latestMovies, setLatestMovies] = useState([]);
+  const [topRatedMovies, setTopRatedMovies] = useState([]);
+  const [recommendedMovies, setRecommendedMovies] = useState([]);
+  const [continueWatching, setContinueWatching] = useState([]);
+  const [recentlyViewed, setRecentlyViewed] = useState([]);
   const [search, setSearch] = useState('');
+  const [assistantQuery, setAssistantQuery] = useState('');
+  const [assistantResults, setAssistantResults] = useState([]);
+  const [assistantMessage, setAssistantMessage] = useState('Try: “Show me funny action movies from 2024”');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
-    fetchAllMovies();
+    const storedContinueWatching = localStorage.getItem('rax_continue_watching');
+    if (storedContinueWatching) {
+      try {
+        setContinueWatching(JSON.parse(storedContinueWatching));
+      } catch {
+        setContinueWatching([]);
+      }
+    }
+
+    const storedRecentlyViewed = localStorage.getItem('rax_view_history');
+    if (storedRecentlyViewed) {
+      try {
+        setRecentlyViewed(JSON.parse(storedRecentlyViewed));
+      } catch {
+        setRecentlyViewed([]);
+      }
+    }
+
+    loadInitialMovies();
   }, []);
 
-  const fetchAllMovies = async () => {
+  const loadInitialMovies = async () => {
     try {
       setLoading(true);
       setError('');
 
-      const requests = [
-        movieAPI.getFeaturedMovies(),
-        movieAPI.getPopularMovies(1),
-        movieAPI.getMovies({ genre: '28', page: 1 }), // Action
-        movieAPI.getMovies({ genre: '18', page: 1 }), // Drama
-      ];
+      const [featuredResult, popularResult, nextPopularResult] = await Promise.all([
+        movieService.getFeaturedMovies(),
+        movieService.getPopularMovies(1),
+        movieService.getPopularMovies(2),
+      ]);
 
-      const [featuredRes, popularRes, actionRes, dramaRes] = await Promise.all(requests);
+      const popularMovies = popularResult.movies || [];
+      const nextPageMovies = nextPopularResult.movies || [];
+      const sortedTopRated = [...popularMovies].sort((a, b) => (b.rating || b.vote_average || 0) - (a.rating || a.vote_average || 0));
 
-      setFeaturedMovies(featuredRes.data.movies || []);
-      setTrendingMovies(popularRes.data.movies?.slice(0, 12) || []);
-      setPopularMovies(popularRes.data.movies || []);
-      setActionMovies(actionRes.data.movies?.slice(0, 12) || []);
-      setDramaMovies(dramaRes.data.movies?.slice(0, 12) || []);
-    } catch (error) {
-      console.error('Error fetching movies:', error);
+      setFeaturedMovies(featuredResult);
+      setMovies(popularMovies);
+      setTrendingMovies(popularMovies.slice(0, 8));
+      setLatestMovies(nextPageMovies.slice(0, 8));
+      setTopRatedMovies(sortedTopRated.slice(0, 8));
+      setRecommendedMovies(popularMovies.slice(0, 8));
+      setHasMore((popularResult.totalPages || 1) > 1);
+      setPage(1);
+    } catch (err) {
+      console.error('Error fetching movies:', err);
       setError('Failed to load movies. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSearch = (e) => {
-    e.preventDefault();
+  const fetchMovies = async (nextPage = 1) => {
+    try {
+      setLoading(true);
+      const result = await movieService.getPopularMovies(nextPage);
+      const incomingMovies = result.movies || [];
+      setMovies((prev) => (nextPage === 1 ? incomingMovies : [...prev, ...incomingMovies]));
+      setHasMore((result.totalPages || 1) > nextPage);
+      setPage(nextPage);
+    } catch (err) {
+      console.error('Error fetching movies:', err);
+      setError('Failed to load movies. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearch = (event) => {
+    event.preventDefault();
     if (search.trim()) {
       window.location.href = `/movies?search=${encodeURIComponent(search)}`;
     }
   };
 
+  const handleAssistantSearch = (event) => {
+    event.preventDefault();
+    const query = assistantQuery.trim();
+    const results = getAssistantResults(movies, query || 'recommended');
+    setAssistantResults(results);
+    setAssistantMessage(
+      results.length > 0
+        ? `AI picked ${results.length} matches for “${query || 'your mood'}”.`
+        : `No exact matches for “${query || 'your mood'}”, so I’m showing broader picks.`
+    );
+  };
+
+  const suggestions = useMemo(() => {
+    const baseSuggestions = movies.slice(0, 10).map((movie) => ({
+      label: movie.title,
+      type: 'Title',
+    }));
+
+    const genreSuggestions = genreOptions.map((genre) => ({ label: genre, type: 'Genre' }));
+    const yearSuggestions = movies.slice(0, 6).map((movie) => ({ label: movie.releaseYear || '', type: 'Year' })).filter((item) => item.label);
+
+    return [...baseSuggestions, ...genreSuggestions, ...yearSuggestions].slice(0, 15);
+  }, [movies]);
+
   const featuredMovie = featuredMovies[0];
+  const historyRecommendations = useMemo(() => buildHistoryRecommendations(movies, recentlyViewed), [movies, recentlyViewed]);
+  const discoveryRows = useMemo(() => {
+    const comingSoon = [...movies].filter((movie) => Number(movie.releaseYear) >= 2024).slice(0, 4);
+    const editorPicks = featuredMovies.slice(0, 4);
+    const awardWinning = [...topRatedMovies].slice(0, 4);
+    const collections = [
+      {
+        title: 'Sci-Fi Picks',
+        description: 'Futuristic adventures and mind-bending worlds.',
+        movies: [...movies].filter((movie) => normalizeGenreList(movie).some((genre) => genre.toLowerCase().includes('sci'))).slice(0, 4),
+      },
+      {
+        title: 'Thriller Nights',
+        description: 'Fast-paced twists and suspenseful stories.',
+        movies: [...movies].filter((movie) => normalizeGenreList(movie).some((genre) => genre.toLowerCase().includes('thrill'))).slice(0, 4),
+      },
+      {
+        title: 'Feel-Good Romance',
+        description: 'Soft, warm, and heart-lifting stories.',
+        movies: [...movies].filter((movie) => normalizeGenreList(movie).some((genre) => genre.toLowerCase().includes('romance'))).slice(0, 4),
+      },
+    ];
+
+    return [
+      { title: 'Trending today', movies: trendingMovies.slice(0, 4) },
+      { title: 'Coming soon', movies: comingSoon },
+      { title: 'Editor’s picks', movies: editorPicks },
+      { title: 'Award-winning movies', movies: awardWinning },
+      { title: 'Recently added', movies: latestMovies.slice(0, 4) },
+      ...collections.map((collection) => ({ title: collection.title, description: collection.description, movies: collection.movies })),
+    ];
+  }, [movies, featuredMovies, topRatedMovies, trendingMovies, latestMovies]);
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
-      {/* Hero Section */}
-      <section className="relative min-h-screen md:min-h-[600px] overflow-hidden">
-        {/* Background */}
-        <div className="absolute inset-0 bg-gradient-to-b from-slate-900 via-slate-950 to-slate-950" />
-
-        {/* Hero Content */}
-        <div className="relative h-full container mx-auto px-4 py-12 md:py-24 flex flex-col justify-center items-start">
-          <div className="max-w-2xl space-y-6">
-            {/* Badge */}
-            <span className="inline-flex items-center gap-2 rounded-full bg-rose-500/20 px-4 py-2 text-sm font-semibold text-rose-200 border border-rose-500/30">
-              <span className="w-2 h-2 bg-rose-400 rounded-full animate-pulse" />
-              Trending Now
+      <section className="relative overflow-hidden border-b border-slate-800/70 bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.18),_transparent_35%),linear-gradient(135deg,_#020617_0%,_#0f172a_50%,_#111827_100%)]">
+        <div className="container mx-auto flex flex-col px-4 py-10 md:px-6 md:py-16 lg:py-20">
+          <div className="max-w-3xl space-y-6">
+            <span className="inline-flex items-center gap-2 rounded-full border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-sm font-semibold text-sky-200">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-sky-400" /> AI-powered discovery
             </span>
-
-            {/* Headline */}
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold leading-tight tracking-tight text-white">
-              Stream the next
-              <span className="block bg-gradient-to-r from-rose-400 via-pink-400 to-red-400 bg-clip-text text-transparent">
-                blockbuster
-              </span>
+            <h1 className="text-4xl font-bold tracking-tight text-white md:text-6xl">
+              Discover your next <span className="block text-sky-400">blue-rush favorite</span>
             </h1>
-
-            {/* Description */}
-            <p className="text-lg md:text-xl text-slate-300 max-w-xl leading-relaxed">
-              Explore thousands of movies handpicked for you. Build your watchlist, save favorites, and discover films by genre in our sleek cinematic interface.
+            <p className="max-w-2xl text-lg leading-relaxed text-slate-300">
+              Browse a polished collection of movies with instant trailer previews, smart recommendations, and a cinematic blue theme.
             </p>
+            <div className="max-w-2xl pt-2">
+              <SearchBar value={search} onChange={(event) => setSearch(event.target.value)} onSubmit={handleSearch} suggestions={suggestions} onSuggestionSelect={(item) => { setSearch(item.label); window.location.href = `/movies?search=${encodeURIComponent(item.label)}`; }} />
+            </div>
+          </div>
 
-            {/* Search Bar */}
-            <SearchBar
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onSubmit={handleSearch}
-            />
+          <div className="mt-10 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+            <div className="overflow-hidden rounded-[2rem] border border-sky-500/20 bg-slate-900/70 shadow-2xl shadow-slate-950/60">
+              <div className="relative aspect-[16/9] overflow-hidden">
+                {featuredMovie?.poster ? (
+                  <img src={featuredMovie.poster} alt={featuredMovie.title} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center bg-slate-800 text-5xl text-slate-500">🎬</div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent" />
+              </div>
+              <div className="space-y-4 p-6">
+                <div className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
+                  <span className="rounded-full bg-sky-500/10 px-3 py-1 text-sky-300">Featured</span>
+                  <span className="rounded-full bg-slate-800 px-3 py-1">{featuredMovie?.releaseYear || 'Now streaming'}</span>
+                </div>
+                <h2 className="text-2xl font-semibold text-white">{featuredMovie?.title || 'Featured release'}</h2>
+                <p className="text-slate-400">{featuredMovie?.description || 'A cinematic highlight ready for your next watch.'}</p>
+                <div className="flex flex-wrap gap-3">
+                  <a href="/movies" className="rounded-full bg-sky-600 px-5 py-2.5 font-semibold text-white transition hover:bg-sky-500">Browse movies</a>
+                  <a href="/movies?genre=28" className="rounded-full border border-slate-700 px-5 py-2.5 font-semibold text-slate-300 transition hover:border-sky-400 hover:text-white">Action picks</a>
+                </div>
+              </div>
+            </div>
 
-            {/* CTA Buttons */}
-            <div className="flex flex-wrap gap-3">
-              <a
-                href="/movies"
-                className="px-6 md:px-8 py-3 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-all duration-300 active:scale-95 shadow-lg shadow-rose-500/30 hover:shadow-rose-500/50"
-              >
-                Browse Movies
-              </a>
-              <a
-                href="/movies?genre=28"
-                className="px-6 md:px-8 py-3 rounded-lg border border-slate-600 hover:border-rose-400 text-slate-300 hover:text-white font-semibold transition-all duration-300 active:scale-95"
-              >
-                Action Films
-              </a>
+            <div className="rounded-[2rem] border border-slate-800/80 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/60">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-semibold text-white">Genres</h3>
+                <span className="text-sm text-slate-400">Tap to explore</span>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {genreOptions.map((genre) => (
+                  <a key={genre} href={`/movies?genre=${genre.toLowerCase()}`} className="rounded-full border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:border-sky-400 hover:text-white">
+                    {genre}
+                  </a>
+                ))}
+              </div>
+              <div className="mt-8 space-y-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300">
+                <div className="flex items-center justify-between">
+                  <span>AI picks ready</span>
+                  <span className="font-semibold text-white">Live</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Instant trailers</span>
+                  <span className="font-semibold text-white">Included</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Mobile ready</span>
+                  <span className="font-semibold text-white">Yes</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Featured/Top Pick Section */}
-      {!loading && featuredMovie && (
-        <section className="container mx-auto px-4 py-12 md:py-16">
-          <div className="rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-900/80 to-slate-950 p-6 md:p-8 shadow-2xl shadow-black/50 overflow-hidden">
-            <div className="grid gap-6 md:gap-8 md:grid-cols-[1fr_1.5fr]">
-              {/* Featured Movie Poster */}
-              <div className="hidden md:block relative rounded-xl overflow-hidden aspect-[2/3] shadow-xl">
-                {featuredMovie.posterUrl || featuredMovie.poster ? (
-                  <img
-                    src={featuredMovie.posterUrl || featuredMovie.poster}
-                    alt={featuredMovie.title}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center">
-                    <span className="text-6xl">🎬</span>
-                  </div>
-                )}
+      <section className="container mx-auto px-4 py-8 md:px-6 md:py-10">
+        <div className="mb-8 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+          <div className="rounded-[2rem] border border-sky-500/20 bg-slate-900/75 p-6 shadow-2xl shadow-slate-950/40">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.35em] text-sky-400">AI assistant</p>
+                <h2 className="text-2xl font-semibold text-white">Find me a movie</h2>
               </div>
-
-              {/* Featured Movie Info */}
-              <div className="space-y-4">
-                <div>
-                  <span className="inline-block text-xs md:text-sm uppercase tracking-widest text-rose-400 font-bold mb-2">
-                    Top Pick
-                  </span>
-                  <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight">
-                    {featuredMovie.title}
-                  </h2>
+              <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-sm text-sky-300">Natural language</span>
+            </div>
+            <form onSubmit={handleAssistantSearch} className="mt-5 flex flex-col gap-3 md:flex-row">
+              <input value={assistantQuery} onChange={(event) => setAssistantQuery(event.target.value)} placeholder="Show me funny action movies from 2024" className="flex-1 rounded-full border border-slate-700 bg-slate-950/90 px-4 py-3 text-slate-100 outline-none focus:border-sky-400" />
+              <button type="submit" className="rounded-full bg-sky-600 px-5 py-3 font-semibold text-white transition hover:bg-sky-500">Ask AI</button>
+            </form>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {moodPrompts.map((prompt) => (
+                <button key={prompt.query} type="button" onClick={() => { setAssistantQuery(prompt.query); const results = getAssistantResults(movies, prompt.query); setAssistantResults(results); setAssistantMessage(`AI picked ${results.length} matches for “${prompt.query}”.`); }} className="rounded-full border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-300 transition hover:border-sky-400 hover:text-white">
+                  {prompt.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-4 text-sm text-slate-400">{assistantMessage}</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {(assistantResults.length > 0 ? assistantResults : historyRecommendations.slice(0, 4)).map((movie) => (
+                <div key={movie.id || movie._id} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
+                  <p className="font-semibold text-white">{movie.title}</p>
+                  <p className="mt-1 text-sm text-slate-400">{movie.genre || 'General'} • {movie.releaseYear || 'Coming soon'}</p>
                 </div>
-
-                <div className="flex flex-wrap items-center gap-3 text-sm md:text-base">
-                  {featuredMovie.release_date && (
-                    <span className="text-slate-300">
-                      {new Date(featuredMovie.release_date).getFullYear()}
-                    </span>
-                  )}
-                  {featuredMovie.vote_average && (
-                    <div className="flex items-center gap-1">
-                      <span className="text-amber-400">★</span>
-                      <span className="font-semibold text-white">
-                        {Number(featuredMovie.vote_average).toFixed(1)}/10
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <p className="text-slate-300 text-base md:text-lg leading-relaxed line-clamp-3">
-                  {featuredMovie.overview || featuredMovie.description}
-                </p>
-
-                <div className="flex gap-3 pt-4">
-                  <a
-                    href={`/movies/${featuredMovie.id || featuredMovie._id}`}
-                    className="px-6 md:px-8 py-3 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold flex items-center gap-2 transition-all duration-300 active:scale-95 shadow-lg shadow-rose-500/30 hover:shadow-rose-500/50"
-                  >
-                    <span>▶</span> Watch Now
-                  </a>
-                  <button className="px-6 md:px-8 py-3 rounded-lg border border-slate-600 hover:border-white text-slate-300 hover:text-white font-semibold transition-all duration-300">
-                    + Watchlist
-                  </button>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
-        </section>
-      )}
 
-      {/* Content Rows */}
-      <section className="space-y-8 md:space-y-12 pb-16">
-        {/* Trending Now */}
-        {loading ? (
-          <div className="container mx-auto px-4">
-            <SkeletonLoader count={8} variant="row" />
+          <div className="rounded-[2rem] border border-slate-800/80 bg-slate-900/75 p-6 shadow-2xl shadow-slate-950/40">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.35em] text-sky-400">Personalized</p>
+                <h2 className="text-2xl font-semibold text-white">Recommended from your history</h2>
+              </div>
+              <span className="rounded-full border border-slate-700 bg-slate-950/70 px-3 py-1 text-sm text-slate-300">Smart picks</span>
+            </div>
+            <div className="mt-5 space-y-3">
+              {historyRecommendations.length > 0 ? (
+                historyRecommendations.slice(0, 4).map((movie) => (
+                  <div key={movie.id || movie._id} className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
+                    <div>
+                      <p className="font-semibold text-white">{movie.title}</p>
+                      <p className="text-sm text-slate-400">{movie.genre || 'General'} • {movie.releaseYear || 'Coming soon'}</p>
+                    </div>
+                    <span className="rounded-full bg-sky-500/10 px-3 py-1 text-sm text-sky-300">AI match</span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-slate-400">Watch a few titles to unlock deep personalization.</p>
+              )}
+            </div>
           </div>
-        ) : (
-          <div className="container mx-auto px-0">
-            <ContentRow
-              title="🔥 Trending Now"
-              movies={trendingMovies}
-              loading={loading}
-            />
+        </div>
+
+        {continueWatching.length > 0 && (
+          <div className="mb-8">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-2xl font-semibold text-white">Continue watching</h2>
+              <a href="/profile" className="text-sm text-sky-300 transition hover:text-sky-200">View profile</a>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {continueWatching.slice(0, 4).map((movie) => (
+                <MovieCard key={movie.id || movie._id} movie={movie} />
+              ))}
+            </div>
           </div>
         )}
 
-        {/* Popular Movies */}
-        {loading ? (
-          <div className="container mx-auto px-4">
-            <SkeletonLoader count={8} variant="row" />
-          </div>
-        ) : (
-          <div className="container mx-auto px-0">
-            <ContentRow
-              title="⭐ Popular Movies"
-              movies={popularMovies}
-              loading={loading}
-            />
-          </div>
-        )}
-
-        {/* Action */}
-        {loading ? (
-          <div className="container mx-auto px-4">
-            <SkeletonLoader count={8} variant="row" />
-          </div>
-        ) : (
-          <div className="container mx-auto px-0">
-            <ContentRow
-              title="💥 Action"
-              movies={actionMovies}
-              loading={loading}
-            />
+        {recentlyViewed.length > 0 && (
+          <div className="mb-8">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-2xl font-semibold text-white">Recently viewed</h2>
+              <span className="text-sm text-slate-400">Your recent activity</span>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {recentlyViewed.slice(0, 4).map((movie) => (
+                <MovieCard key={movie.id || movie._id} movie={movie} />
+              ))}
+            </div>
           </div>
         )}
 
-        {/* Drama */}
-        {loading ? (
-          <div className="container mx-auto px-4">
-            <SkeletonLoader count={8} variant="row" />
+        <div className="mb-8">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-2xl font-semibold text-white">Trending now</h2>
+            <a href="/movies" className="text-sm text-sky-300 transition hover:text-sky-200">View all</a>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {trendingMovies.map((movie) => (
+              <MovieCard key={movie.id || movie._id} movie={movie} />
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-8">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-2xl font-semibold text-white">Latest releases</h2>
+            <a href="/movies" className="text-sm text-sky-300 transition hover:text-sky-200">View all</a>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {latestMovies.map((movie) => (
+              <MovieCard key={movie.id || movie._id} movie={movie} />
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-8">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-2xl font-semibold text-white">Top rated</h2>
+            <a href="/movies" className="text-sm text-sky-300 transition hover:text-sky-200">View all</a>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {topRatedMovies.map((movie) => (
+              <MovieCard key={movie.id || movie._id} movie={movie} />
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-8">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-2xl font-semibold text-white">Recommended for you</h2>
+            <a href="/movies" className="text-sm text-sky-300 transition hover:text-sky-200">View all</a>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {recommendedMovies.map((movie) => (
+              <MovieCard key={movie.id || movie._id} movie={movie} />
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-8 space-y-6">
+          {discoveryRows.map((row) => (
+            <div key={row.title} className="rounded-[2rem] border border-slate-800/80 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/40">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-semibold text-white">{row.title}</h2>
+                  {row.description ? <p className="text-sm text-slate-400">{row.description}</p> : null}
+                </div>
+                <a href="/movies" className="text-sm text-sky-300 transition hover:text-sky-200">Explore</a>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {row.movies.length > 0 ? row.movies.map((movie) => <MovieCard key={movie.id || movie._id} movie={movie} />) : <p className="text-sm text-slate-400">More titles are on the way.</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.35em] text-sky-400">Collection</p>
+            <h2 className="text-2xl font-semibold text-white">More to explore</h2>
+          </div>
+          <div className="rounded-full border border-slate-800 bg-slate-900/70 px-4 py-2 text-sm text-slate-300">
+            {movies.length} movies loaded
+          </div>
+        </div>
+
+        {loading && movies.length === 0 ? (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <SkeletonLoader count={6} variant="poster" />
           </div>
         ) : (
-          <div className="container mx-auto px-0">
-            <ContentRow
-              title="🎭 Drama"
-              movies={dramaMovies}
-              loading={loading}
-            />
-          </div>
+          <>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {movies.map((movie) => (
+                <MovieCard key={movie.id || movie._id} movie={movie} />
+              ))}
+            </div>
+
+            {error && <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-200">{error}</div>}
+
+            {hasMore && (
+              <div className="mt-8 flex justify-center">
+                <button onClick={() => fetchMovies(page + 1)} className="rounded-full bg-sky-600 px-6 py-3 font-semibold text-white transition hover:bg-sky-500">
+                  {loading ? 'Loading…' : 'Load More'}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </section>
-
-      {/* Error Message */}
-      {error && (
-        <section className="container mx-auto px-4 pb-8">
-          <div className="p-4 rounded-lg bg-red-500/20 border border-red-500/50 text-red-200">
-            {error}
-          </div>
-        </section>
-      )}
     </main>
   );
 };

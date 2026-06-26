@@ -2,72 +2,127 @@ const Movie = require('../models/Movie');
 const Review = require('../models/Review');
 const tmdbService = require('../services/tmdbService');
 const mongoose = require('mongoose');
+const { sampleMovies } = require('../data/sampleMovies');
+
+const buildMovieResponse = (movie) => ({
+  id: movie._id,
+  _id: movie._id,
+  title: movie.title,
+  description: movie.description || movie.overview || '',
+  overview: movie.description || movie.overview || '',
+  poster: movie.poster,
+  posterUrl: movie.poster,
+  trailer: movie.trailer,
+  trailerUrl: movie.trailer,
+  genre: Array.isArray(movie.genre) ? movie.genre : [movie.genre].filter(Boolean),
+  genres: Array.isArray(movie.genre) ? movie.genre : [movie.genre].filter(Boolean),
+  year: movie.year,
+  releaseYear: movie.year,
+  release_date: movie.year ? `${movie.year}-01-01` : null,
+  duration: movie.duration,
+  runtime: movie.duration,
+  rating: movie.rating,
+  vote_average: movie.rating,
+  cast: movie.cast || [],
+  director: movie.director || '',
+  featured: movie.featured || false,
+  createdAt: movie.createdAt,
+  updatedAt: movie.updatedAt,
+  source: 'local',
+});
+
+const getLocalMovies = async ({ search = '', genre = '', year = '', page = 1, limit = 12, featured = false, sort = 'createdAt' } = {}) => {
+  const query = {};
+
+  if (featured) {
+    query.featured = true;
+  }
+
+  if (search) {
+    const searchRegex = new RegExp(search, 'i');
+    query.$or = [
+      { title: searchRegex },
+      { description: searchRegex },
+      { cast: { $in: [searchRegex] } },
+      { genre: { $in: [searchRegex] } },
+    ];
+  }
+
+  if (genre) {
+    query.genre = { $regex: new RegExp(String(genre), 'i') };
+  }
+
+  if (year) {
+    query.year = Number(year);
+  }
+
+  if (!global.dbConnected) {
+    const filtered = sampleMovies.filter((movie) => {
+      if (featured && !movie.featured) return false;
+      if (search) {
+        const haystack = `${movie.title} ${movie.description} ${movie.genre?.join(' ')} ${movie.cast?.join(' ')}`.toLowerCase();
+        if (!haystack.includes(String(search).toLowerCase())) return false;
+      }
+      if (genre) {
+        if (!movie.genre?.some((item) => item.toLowerCase().includes(String(genre).toLowerCase()))) return false;
+      }
+      if (year && movie.year !== Number(year)) return false;
+      return true;
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      if (sort === 'rating') return (b.rating || 0) - (a.rating || 0);
+      return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+    });
+
+    const paged = sorted.slice((Number(page) - 1) * Number(limit), Number(page) * Number(limit));
+
+    return {
+      movies: paged.map((movie) => ({ ...buildMovieResponse(movie), source: 'sample' })),
+      totalPages: Math.max(1, Math.ceil(sorted.length / Number(limit))),
+      totalResults: sorted.length,
+    };
+  }
+
+  const total = await Movie.countDocuments(query);
+  const movies = await Movie.find(query)
+    .sort(sort === 'rating' ? { rating: -1, createdAt: -1 } : { createdAt: -1 })
+    .skip((Number(page) - 1) * Number(limit))
+    .limit(Number(limit));
+
+  return {
+    movies: movies.map(buildMovieResponse),
+    totalPages: Math.max(1, Math.ceil(total / Number(limit))),
+    totalResults: total,
+  };
+};
+
 /**
- * Search for movies from TMDB API
- * Includes both TMDB data and local MongoDB reviews/ratings
+ * Search for movies from MongoDB and optionally fall back to TMDB
  */
 exports.getAllMovies = async (req, res, next) => {
   try {
-    const { search, page = 1, genre } = req.query;
+    const { search, page = 1, genre, year } = req.query;
+    const parsedPage = Math.max(1, parseInt(page) || 1);
 
-    // If search query provided, use TMDB search
-    if (search) {
-      const result = await tmdbService.searchMovies(search, page);
-      
-      // Enrich TMDB data with local reviews
-      const enrichedMovies = result.movies.map(movie => ({
-        id: movie.id,
-        tmdbId: movie.id,
-        title: movie.title,
-        overview: movie.overview,
-        poster_path: movie.poster_path,
-        backdrop_path: movie.backdrop_path,
-        release_date: movie.release_date,
-        vote_average: movie.vote_average,
-        popularity: movie.popularity,
-        posterUrl: tmdbService.getImageUrl(movie.poster_path),
-      }));
+    const result = await getLocalMovies({
+      search,
+      genre,
+      year,
+      page: parsedPage,
+      limit: 12,
+    });
 
-      return res.json({
-        movies: enrichedMovies,
-        totalPages: result.totalPages,
-        totalResults: result.totalResults,
-        page: parseInt(page),
-      });
-    }
-
-    // If genre provided, use TMDB genre discovery
-    if (genre) {
-      const genreId = parseInt(genre);
-      const result = await tmdbService.getMoviesByGenre(genreId, page);
-
-      const enrichedMovies = result.movies.map(movie => ({
-        id: movie.id,
-        tmdbId: movie.id,
-        title: movie.title,
-        overview: movie.overview,
-        poster_path: movie.poster_path,
-        backdrop_path: movie.backdrop_path,
-        release_date: movie.release_date,
-        vote_average: movie.vote_average,
-        popularity: movie.popularity,
-        posterUrl: tmdbService.getImageUrl(movie.poster_path),
-      }));
-
-      return res.json({
-        movies: enrichedMovies,
-        totalPages: result.totalPages,
-        page: parseInt(page),
-      });
-    }
-
-    // Default: return local MongoDB movies for admin-added content
-    const movies = await Movie.find().sort({ createdAt: -1 }).limit(20);
-    res.json({ movies });
+    return res.json({
+      movies: result.movies,
+      totalPages: result.totalPages,
+      totalResults: result.totalResults,
+      page: parsedPage,
+    });
   } catch (error) {
-  console.error("getMovie error:", error);
-  next(error);
-}
+    console.error('getMovie error:', error);
+    next(error);
+  }
 };
 
 /**
@@ -75,27 +130,12 @@ exports.getAllMovies = async (req, res, next) => {
  */
 exports.getFeaturedMovies = async (req, res, next) => {
   try {
-    const result = await tmdbService.getTrendingMovies('week', 1);
-    
-    const enrichedMovies = result.movies.slice(0, 8).map(movie => ({
-      id: movie.id,
-      tmdbId: movie.id,
-      title: movie.title,
-      overview: movie.overview,
-      poster_path: movie.poster_path,
-      backdrop_path: movie.backdrop_path,
-      release_date: movie.release_date,
-      vote_average: movie.vote_average,
-      popularity: movie.popularity,
-      posterUrl: tmdbService.getImageUrl(movie.poster_path, 'w500'),
-      backdropUrl: tmdbService.getImageUrl(movie.backdrop_path, 'w1280'),
-    }));
-
-    res.json({ movies: enrichedMovies });
+    const result = await getLocalMovies({ featured: true, page: 1, limit: 8, sort: 'rating' });
+    res.json({ movies: result.movies });
   } catch (error) {
-  console.error("getMovie error:", error);
-  next(error);
-}
+    console.error('getMovie error:', error);
+    next(error);
+  }
 };
 
 /**
@@ -104,30 +144,17 @@ exports.getFeaturedMovies = async (req, res, next) => {
 exports.getPopularMovies = async (req, res, next) => {
   try {
     const page = req.query.page || 1;
-    const result = await tmdbService.getPopularMovies(page);
-    
-    const enrichedMovies = result.movies.map(movie => ({
-      id: movie.id,
-      tmdbId: movie.id,
-      title: movie.title,
-      overview: movie.overview,
-      poster_path: movie.poster_path,
-      backdrop_path: movie.backdrop_path,
-      release_date: movie.release_date,
-      vote_average: movie.vote_average,
-      popularity: movie.popularity,
-      posterUrl: tmdbService.getImageUrl(movie.poster_path),
-    }));
+    const result = await getLocalMovies({ page, limit: 12, sort: 'rating' });
 
     res.json({
-      movies: enrichedMovies,
+      movies: result.movies,
       totalPages: result.totalPages,
       page: parseInt(page),
     });
   } catch (error) {
-  console.error("getMovie error:", error);
-  next(error);
-}
+    console.error('getMovie error:', error);
+    next(error);
+  }
 };
 
 
@@ -155,49 +182,26 @@ if (mongoose.Types.ObjectId.isValid(id)) {
       return res.json({ movie, reviews, similar, source: 'local' });
     }
 
-    // If not in local DB, try TMDB (id should be numeric for TMDB)
-    if (isNaN(id)) {
-      return res.status(404).json({ message: 'Movie not found.' });
+    if (!global.dbConnected) {
+      const sampleMovie = sampleMovies.find((item) => item.title.toLowerCase() === id.toLowerCase() || item.title.toLowerCase().includes(String(id).toLowerCase()));
+      if (sampleMovie) {
+        return res.json({
+          movie: { ...buildMovieResponse(sampleMovie), source: 'sample' },
+          reviews,
+          similar: sampleMovies.filter((item) => item.title !== sampleMovie.title).slice(0, 4).map((item) => ({ ...buildMovieResponse(item), source: 'sample' })),
+          source: 'sample',
+        });
+      }
     }
 
-    const tmdbMovie = await tmdbService.getMovieDetails(parseInt(id));
-    
-    // Get similar movies from TMDB
-    const similarResult = await tmdbService.getSimilarMovies(parseInt(id));
-    const similarMovies = similarResult.movies.slice(0, 4).map(m => ({
-      id: m.id,
-      tmdbId: m.id,
-      title: m.title,
-      poster_path: m.poster_path,
-      posterUrl: tmdbService.getImageUrl(m.poster_path),
-    }));
-
-    const enrichedMovie = {
-      id: tmdbMovie.id,
-      tmdbId: tmdbMovie.id,
-      title: tmdbMovie.title,
-      overview: tmdbMovie.overview,
-      poster_path: tmdbMovie.poster_path,
-      backdrop_path: tmdbMovie.backdrop_path,
-      release_date: tmdbMovie.release_date,
-      vote_average: tmdbMovie.vote_average,
-      popularity: tmdbMovie.popularity,
-      runtime: tmdbMovie.runtime,
-      genres: tmdbMovie.genres,
-      budget: tmdbMovie.budget,
-      revenue: tmdbMovie.revenue,
-      status: tmdbMovie.status,
-      posterUrl: tmdbService.getImageUrl(tmdbMovie.poster_path),
-      backdropUrl: tmdbService.getImageUrl(tmdbMovie.backdrop_path, 'w1280'),
-      credits: tmdbMovie.credits,
-      videos: tmdbMovie.videos,
-    };
+    const localMovies = await Movie.find().sort({ createdAt: -1 }).limit(4);
+    const similarMovies = localMovies.filter((item) => item._id.toString() !== movie?._id?.toString()).slice(0, 4).map(buildMovieResponse);
 
     res.json({
-      movie: enrichedMovie,
+      movie: buildMovieResponse(movie),
       reviews,
       similar: similarMovies,
-      source: 'tmdb',
+      source: 'local',
     });
   } catch (error) {
   console.error("getMovie error:", error);

@@ -4,6 +4,7 @@
 
 :root {
   color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
 html {
@@ -22,7 +23,6 @@ button, input, textarea, select {
   @apply font-sans;
 }
 
-/* Smooth page transitions */
 @layer components {
   .page-enter {
     animation: fadeInUp 0.5s ease-out;
@@ -32,28 +32,25 @@ button, input, textarea, select {
     @apply transition-opacity duration-300;
   }
 
-  /* Scrollbar styling */
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-slate-900;
+    @apply bg-slate-950;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-slate-700 rounded hover:bg-slate-600;
+    @apply rounded-full bg-slate-700 hover:bg-sky-500;
   }
 
-  /* Smooth focus states */
   input:focus,
   textarea:focus,
   select:focus {
-    @apply outline-none ring-2 ring-rose-500/50;
+    @apply outline-none ring-2 ring-sky-500/40;
   }
 
-  /* Button press effect */
   button {
     @apply transition-all duration-200;
   }
@@ -62,45 +59,12 @@ button, input, textarea, select {
     @apply scale-95;
   }
 
-  /* Link transitions */
   a {
     @apply transition-colors duration-200;
   }
 
-  /* Movie card shadows on hover */
-  .group:hover {
-    @apply shadow-2xl;
-  }
-
-  /* Backdrop blur */
-  .backdrop-blur-md {
-    backdrop-filter: blur(12px);
-  }
-
-  /* Gradient text */
   .gradient-text {
-    @apply bg-gradient-to-r from-rose-400 to-pink-500 bg-clip-text text-transparent;
-  }
-
-  /* Loading skeleton animation */
-  @keyframes shimmer {
-    0% {
-      background-position: -1000px 0;
-    }
-    100% {
-      background-position: 1000px 0;
-    }
-  }
-
-  .animate-shimmer {
-    animation: shimmer 2s infinite;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgba(255, 255, 255, 0.1),
-      transparent
-    );
-    background-size: 1000px 100%;
+    @apply bg-gradient-to-r from-sky-300 to-blue-500 bg-clip-text text-transparent;
   }
 }
 

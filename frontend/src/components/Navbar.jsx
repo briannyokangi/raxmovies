@@ -13,85 +13,53 @@ const Navbar = () => {
   };
 
   const navLinkClass = ({ isActive }) =>
-    `px-3 md:px-4 py-2 rounded-lg transition-colors duration-200 ${
+    `px-3 md:px-4 py-2 rounded-full transition-all duration-200 ${
       isActive
-        ? 'text-rose-400 font-semibold'
-        : 'text-slate-300 hover:text-white'
+        ? 'bg-sky-500/15 text-sky-300 font-semibold shadow-sm shadow-sky-500/10'
+        : 'text-slate-300 hover:text-white hover:bg-slate-800/70'
     }`;
 
   return (
-    <header className="sticky top-0 z-40 bg-gradient-to-b from-slate-950 via-slate-950 to-slate-950/80 backdrop-blur-md border-b border-slate-800/50 shadow-lg">
+    <header className="sticky top-0 z-50 border-b border-slate-800/70 bg-slate-950/90 backdrop-blur-xl shadow-[0_10px_30px_rgba(2,8,23,0.4)]">
       <div className="container mx-auto px-4 py-3 md:py-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          {/* Logo */}
-          <Link
-            to="/"
-            className="flex items-center gap-2 text-xl md:text-2xl font-bold text-white"
-          >
-            <span className="text-rose-500">▶</span>
-            <span className="hidden sm:inline bg-gradient-to-r from-rose-400 to-pink-400 bg-clip-text text-transparent">
+          <Link to="/" className="flex items-center gap-2 text-xl font-bold text-white">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/15 text-sky-400">▶</span>
+            <span className="hidden bg-gradient-to-r from-sky-300 to-blue-500 bg-clip-text text-transparent sm:inline">
               RaxMovies
             </span>
-            <span className="sm:hidden bg-gradient-to-r from-rose-400 to-pink-400 bg-clip-text text-transparent">
-              RAX
-            </span>
+            <span className="bg-gradient-to-r from-sky-300 to-blue-500 bg-clip-text text-transparent sm:hidden">RAX</span>
           </Link>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-1 lg:gap-3 flex-1 justify-center">
-            <NavLink to="/" className={navLinkClass}>
-              Home
-            </NavLink>
-            <NavLink to="/movies" className={navLinkClass}>
-              Browse
-            </NavLink>
-            {token && (
-              <NavLink to="/watchlist" className={navLinkClass}>
-                Watchlist
-              </NavLink>
-            )}
-            {user?.role === 'admin' && (
-              <NavLink to="/admin" className={navLinkClass}>
-                Admin
-              </NavLink>
-            )}
+          <nav className="hidden flex-1 items-center justify-center gap-1 md:flex lg:gap-3">
+            <NavLink to="/" className={navLinkClass}>Home</NavLink>
+            <NavLink to="/movies" className={navLinkClass}>Browse</NavLink>
+            {token && <NavLink to="/watchlist" className={navLinkClass}>Watchlist</NavLink>}
+            {user?.role === 'admin' && <NavLink to="/admin" className={navLinkClass}>Admin</NavLink>}
           </nav>
 
-          {/* Right Side */}
           <div className="flex items-center gap-2 md:gap-3">
-            {/* Mobile Menu Button */}
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="md:hidden p-2 text-slate-300 hover:text-white transition"
+              className="rounded-full border border-slate-800 p-2 text-slate-300 transition hover:border-sky-400 hover:text-white md:hidden"
               aria-label="Toggle menu"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
 
-            {/* Profile/Auth Buttons */}
             {token ? (
-              <div className="hidden md:flex items-center gap-2">
-                <NavLink to="/profile" className={navLinkClass}>
-                  Profile
-                </NavLink>
-                <button
-                  onClick={handleLogout}
-                  className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-colors duration-200 active:scale-95"
-                >
+              <div className="hidden items-center gap-2 md:flex">
+                <NavLink to="/profile" className={navLinkClass}>Profile</NavLink>
+                <button onClick={handleLogout} className="rounded-full bg-sky-600 px-4 py-2 font-semibold text-white transition hover:bg-sky-500">
                   Logout
                 </button>
               </div>
             ) : (
-              <div className="hidden md:flex items-center gap-2">
-                <NavLink to="/login" className={navLinkClass}>
-                  Login
-                </NavLink>
-                <NavLink
-                  to="/register"
-                  className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-colors duration-200 active:scale-95"
-                >
+              <div className="hidden items-center gap-2 md:flex">
+                <NavLink to="/login" className={navLinkClass}>Login</NavLink>
+                <NavLink to="/register" className="rounded-full bg-sky-600 px-4 py-2 font-semibold text-white transition hover:bg-sky-500">
                   Sign up
                 </NavLink>
               </div>
@@ -99,119 +67,21 @@ const Navbar = () => {
           </div>
         </div>
 
-        {/* Mobile Navigation Menu */}
         {isMenuOpen && (
-          <nav className="md:hidden mt-4 pt-4 border-t border-slate-800 space-y-2">
-            <NavLink
-              to="/"
-              className={({ isActive }) =>
-                `block px-3 py-2 rounded-lg transition-colors ${
-                  isActive
-                    ? 'bg-rose-500/20 text-rose-400'
-                    : 'text-slate-300 hover:text-white'
-                }`
-              }
-              onClick={() => setIsMenuOpen(false)}
-            >
-              Home
-            </NavLink>
-            <NavLink
-              to="/movies"
-              className={({ isActive }) =>
-                `block px-3 py-2 rounded-lg transition-colors ${
-                  isActive
-                    ? 'bg-rose-500/20 text-rose-400'
-                    : 'text-slate-300 hover:text-white'
-                }`
-              }
-              onClick={() => setIsMenuOpen(false)}
-            >
-              Browse
-            </NavLink>
-            {token && (
-              <NavLink
-                to="/watchlist"
-                className={({ isActive }) =>
-                  `block px-3 py-2 rounded-lg transition-colors ${
-                    isActive
-                      ? 'bg-rose-500/20 text-rose-400'
-                      : 'text-slate-300 hover:text-white'
-                  }`
-                }
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Watchlist
-              </NavLink>
-            )}
-            {token && (
-              <NavLink
-                to="/profile"
-                className={({ isActive }) =>
-                  `block px-3 py-2 rounded-lg transition-colors ${
-                    isActive
-                      ? 'bg-rose-500/20 text-rose-400'
-                      : 'text-slate-300 hover:text-white'
-                  }`
-                }
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Profile
-              </NavLink>
-            )}
-            {user?.role === 'admin' && (
-              <NavLink
-                to="/admin"
-                className={({ isActive }) =>
-                  `block px-3 py-2 rounded-lg transition-colors ${
-                    isActive
-                      ? 'bg-rose-500/20 text-rose-400'
-                      : 'text-slate-300 hover:text-white'
-                  }`
-                }
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Admin
-              </NavLink>
-            )}
-            <div className="pt-2 border-t border-slate-800 space-y-2">
-              {!token && (
+          <nav className="mt-4 space-y-2 border-t border-slate-800 pt-4 md:hidden">
+            <NavLink to="/" className={({ isActive }) => `block rounded-xl px-3 py-2 transition ${isActive ? 'bg-sky-500/15 text-sky-300' : 'text-slate-300 hover:text-white'}`} onClick={() => setIsMenuOpen(false)}>Home</NavLink>
+            <NavLink to="/movies" className={({ isActive }) => `block rounded-xl px-3 py-2 transition ${isActive ? 'bg-sky-500/15 text-sky-300' : 'text-slate-300 hover:text-white'}`} onClick={() => setIsMenuOpen(false)}>Browse</NavLink>
+            {token && <NavLink to="/watchlist" className={({ isActive }) => `block rounded-xl px-3 py-2 transition ${isActive ? 'bg-sky-500/15 text-sky-300' : 'text-slate-300 hover:text-white'}`} onClick={() => setIsMenuOpen(false)}>Watchlist</NavLink>}
+            {token && <NavLink to="/profile" className={({ isActive }) => `block rounded-xl px-3 py-2 transition ${isActive ? 'bg-sky-500/15 text-sky-300' : 'text-slate-300 hover:text-white'}`} onClick={() => setIsMenuOpen(false)}>Profile</NavLink>}
+            {user?.role === 'admin' && <NavLink to="/admin" className={({ isActive }) => `block rounded-xl px-3 py-2 transition ${isActive ? 'bg-sky-500/15 text-sky-300' : 'text-slate-300 hover:text-white'}`} onClick={() => setIsMenuOpen(false)}>Admin</NavLink>}
+            <div className="space-y-2 border-t border-slate-800 pt-2">
+              {!token ? (
                 <>
-                  <NavLink
-                    to="/login"
-                    className={({ isActive }) =>
-                      `block px-3 py-2 rounded-lg transition-colors ${
-                        isActive
-                          ? 'bg-rose-500/20 text-rose-400'
-                          : 'text-slate-300 hover:text-white'
-                      }`
-                    }
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    Login
-                  </NavLink>
-                  <NavLink
-                    to="/register"
-                    className={({ isActive }) =>
-                      `block w-full px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-colors text-center ${
-                        isActive ? 'bg-rose-700' : ''
-                      }`
-                    }
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    Sign up
-                  </NavLink>
+                  <NavLink to="/login" className={({ isActive }) => `block rounded-xl px-3 py-2 transition ${isActive ? 'bg-sky-500/15 text-sky-300' : 'text-slate-300 hover:text-white'}`} onClick={() => setIsMenuOpen(false)}>Login</NavLink>
+                  <NavLink to="/register" className="block rounded-xl bg-sky-600 px-3 py-2 text-center font-semibold text-white" onClick={() => setIsMenuOpen(false)}>Sign up</NavLink>
                 </>
-              )}
-              {token && (
-                <button
-                  onClick={() => {
-                    handleLogout();
-                    setIsMenuOpen(false);
-                  }}
-                  className="w-full px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-colors"
-                >
-                  Logout
-                </button>
+              ) : (
+                <button onClick={() => { handleLogout(); setIsMenuOpen(false); }} className="w-full rounded-xl bg-sky-600 px-3 py-2 font-semibold text-white">Logout</button>
               )}
             </div>
           </nav>
