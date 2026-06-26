@@ -48,6 +48,14 @@ const Login = () => {
             {error && <p className="text-sm text-rose-400">{error}</p>}
             <button type="submit" className="w-full rounded-full bg-rose-500 px-6 py-4 text-sm font-semibold text-white transition hover:bg-rose-400">Login</button>
           </form>
+          <div className="mt-6 text-center text-sm text-slate-400">
+            <p>
+              Forgot your password?{' '}
+              <Link to="/forgot-password" className="text-sky-300 hover:text-white">
+                Reset it here.
+              </Link>
+            </p>
+          </div>
         </div>
       </section>
     </main>

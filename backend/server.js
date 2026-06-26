@@ -100,13 +100,13 @@ mongoose
   .catch((error) => {
     global.dbConnected = false;
     console.error('✗ MongoDB connection error, Atlas unavailable');
-    console.error('Error name:', error.name);
-    console.error('Error code:', error.code);
     console.error('Error message:', error.message);
-    if (error.reason) console.error('Error reason:', error.reason);
-    console.error(error.stack);
-    console.error('✗ Backend will not start without a MongoDB Atlas connection.');
-    process.exit(1);
+    console.log('⚠ Starting backend in local fallback mode with sample data.');
+    app.listen(PORT, () => {
+      console.log(`✓ Server running on port ${PORT}`);
+      console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log('✓ Using sample data (TMDB available)');
+    });
   });
 
 module.exports = app;

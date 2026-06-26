@@ -11,6 +11,8 @@ const UserSchema = new mongoose.Schema(
     favorites: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Movie' }],
     watchlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Movie' }],
     role: { type: String, enum: ['user', 'admin'], default: 'user' },
+    resetPasswordToken: { type: String, default: '' },
+    resetPasswordExpires: { type: Date, default: null },
   },
   { timestamps: true }
 );

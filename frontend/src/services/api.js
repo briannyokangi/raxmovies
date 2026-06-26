@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
 });
 
 // Request interceptor to add JWT token
@@ -87,6 +87,15 @@ export const authAPI = {
 
   // Get current user
   getCurrentUser: () => api.get('/auth/profile'),
+
+  // Change password
+  changePassword: (data) => api.put('/auth/password/change', data),
+
+  // Forgot password
+  forgotPassword: (data) => api.post('/auth/password/forgot', data),
+
+  // Reset password
+  resetPassword: (token, data) => api.post(`/auth/password/reset/${token}`, data),
 
   // Logout
   logout: () => {

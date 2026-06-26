@@ -5,9 +5,18 @@ import MovieCard from '../components/MovieCard';
 
 const Profile = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    const storedUser = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('rax_user') || 'null') : null;
+    return storedUser;
+  });
   const [favorites, setFavorites] = useState([]);
   const [watchlist, setWatchlist] = useState([]);
+  const [settings, setSettings] = useState({ username: '', email: '', bio: '', avatar: '' });
+  const [settingsMessage, setSettingsMessage] = useState('');
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const storedUser = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('rax_user') || 'null') : null;
+  const isAuthenticated = Boolean(typeof window !== 'undefined' && localStorage.getItem('rax_token'));
+  const isAdmin = user?.role === 'admin' || storedUser?.role === 'admin';
 
   const fetchMovies = async (items) => {
     if (!items?.length) return [];
@@ -21,10 +30,23 @@ const Profile = () => {
   const loadProfile = async () => {
     try {
       const res = await api.get('/auth/profile');
-      setUser(res.data);
-      setFavorites(await fetchMovies(res.data.favorites || []));
-      setWatchlist(await fetchMovies(res.data.watchlist || []));
+      const profileUser = { ...(storedUser || {}), ...(res.data || {}) };
+      setUser(profileUser);
+      setSettings({
+        username: profileUser.username || '',
+        email: profileUser.email || '',
+        bio: profileUser.bio || '',
+        avatar: profileUser.avatar || '',
+      });
+      localStorage.setItem('rax_user', JSON.stringify(profileUser));
+      setFavorites(await fetchMovies(profileUser.favorites || []));
+      setWatchlist(await fetchMovies(profileUser.watchlist || []));
     } catch (error) {
+      if (storedUser) {
+        setUser(storedUser);
+        setFavorites(await fetchMovies(storedUser.favorites || []));
+        setWatchlist(await fetchMovies(storedUser.watchlist || []));
+      }
       console.error(error);
     }
   };
@@ -47,13 +69,85 @@ const Profile = () => {
     }
   };
 
+  const handleSaveSettings = async (e) => {
+    e.preventDefault();
+    setIsSavingSettings(true);
+    setSettingsMessage('');
+
+    try {
+      const res = await api.put('/auth/profile', {
+        username: settings.username,
+        email: settings.email,
+        bio: settings.bio,
+        avatar: settings.avatar,
+      });
+
+      const updatedUser = { ...(user || {}), ...(res.data?.user || {}) };
+      setUser(updatedUser);
+      localStorage.setItem('rax_user', JSON.stringify(updatedUser));
+      setSettingsMessage('Account settings updated.');
+    } catch (error) {
+      setSettingsMessage(error.response?.data?.message || 'Could not update settings.');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  const handleDownloadData = () => {
+    const exportData = {
+      profile: user,
+      favorites: favorites.map((movie) => ({ _id: movie._id, title: movie.title })),
+      watchlist: watchlist.map((movie) => ({ _id: movie._id, title: movie.title })),
+      exportedAt: new Date().toISOString(),
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${user?.username || 'profile'}-data.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   useEffect(() => {
-    if (!localStorage.getItem('rax_token')) {
-      navigate('/login');
+    const token = localStorage.getItem('rax_token');
+    if (!token) {
+      setUser(null);
+      setFavorites([]);
+      setWatchlist([]);
       return;
     }
     loadProfile();
   }, [navigate]);
+
+  if (!localStorage.getItem('rax_token')) {
+    return (
+      <main className="min-h-screen bg-slate-950 text-slate-100">
+        <section className="container mx-auto px-4 py-16 md:py-20">
+          <div className="mx-auto max-w-2xl rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-8 text-center shadow-2xl shadow-black/30">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-blue-500 text-3xl font-bold text-white">
+              👤
+            </div>
+            <h1 className="mt-6 text-3xl font-bold text-white">Your profile hub</h1>
+            <p className="mt-3 text-slate-400">
+              Sign in to view your favorites, watchlist, and admin controls in one place.
+            </p>
+            <div className="mt-8 flex flex-wrap justify-center gap-3">
+              <Link to="/login" className="rounded-full bg-rose-600 px-6 py-3 font-semibold text-white transition hover:bg-rose-700">
+                Log in
+              </Link>
+              <Link to="/register" className="rounded-full border border-slate-700 px-6 py-3 font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white">
+                Sign up
+              </Link>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   if (!user) {
     return (
@@ -133,20 +227,98 @@ const Profile = () => {
               </div>
             </div>
 
-            <button
-              onClick={() => {
-                localStorage.removeItem('rax_token');
-                localStorage.removeItem('rax_user');
-                navigate('/login');
-              }}
-              className="w-full mt-6 px-4 py-3 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-all duration-300 active:scale-95"
-            >
-              Logout
-            </button>
+            <div className="mt-6 space-y-3">
+              <form onSubmit={handleSaveSettings} className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="font-semibold text-white">Account settings</h3>
+                  <button type="submit" disabled={isSavingSettings} className="rounded-full bg-sky-500/90 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-sky-500 disabled:opacity-60">
+                    {isSavingSettings ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+                <div className="mt-3 space-y-3">
+                  <input
+                    value={settings.username}
+                    onChange={(e) => setSettings((current) => ({ ...current, username: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none"
+                    placeholder="Username"
+                  />
+                  <input
+                    value={settings.email}
+                    onChange={(e) => setSettings((current) => ({ ...current, email: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none"
+                    placeholder="Email"
+                  />
+                  <input
+                    value={settings.avatar}
+                    onChange={(e) => setSettings((current) => ({ ...current, avatar: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none"
+                    placeholder="Avatar URL"
+                  />
+                  <textarea
+                    value={settings.bio}
+                    onChange={(e) => setSettings((current) => ({ ...current, bio: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none"
+                    placeholder="Bio"
+                    rows="3"
+                  />
+                </div>
+                {settingsMessage && <p className="mt-3 text-xs text-sky-300">{settingsMessage}</p>}
+              </form>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm">
+                <h3 className="font-semibold text-white">Security</h3>
+                <p className="mt-3 text-sm text-slate-400">Change your password or reset it if you forgot it.</p>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <Link
+                    to="/change-password"
+                    className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:border-slate-500 hover:text-white"
+                  >
+                    Change password
+                  </Link>
+                  <Link
+                    to="/forgot-password"
+                    className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:border-slate-500 hover:text-white"
+                  >
+                    Forgot password
+                  </Link>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleDownloadData}
+                className="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+              >
+                Download my data
+              </button>
+
+              {isAdmin && (
+                <Link
+                  to="/admin"
+                  className="flex items-center justify-center rounded-lg border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm font-semibold text-sky-200 transition hover:bg-sky-500/20"
+                >
+                  Open Admin Dashboard
+                </Link>
+              )}
+              <button
+                onClick={() => {
+                  localStorage.removeItem('rax_token');
+                  localStorage.removeItem('rax_user');
+                  navigate('/login');
+                }}
+                className="w-full px-4 py-3 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-all duration-300 active:scale-95"
+              >
+                Logout
+              </button>
+            </div>
           </div>
 
           {/* Quick Links */}
-          <div className="space-y-4 md:space-y-0 md:grid md:grid-cols-2 md:gap-4">
+          <div className="space-y-4 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4">
+            {isAuthenticated && !isAdmin && (
+              <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-400 lg:col-span-3">
+                Sign in as an admin account to show the admin dashboard here.
+              </div>
+            )}
             <Link
               to="/watchlist"
               className="p-6 rounded-xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 hover:border-rose-500 transition group"
@@ -171,6 +343,20 @@ const Profile = () => {
                 Discover more content
               </p>
             </Link>
+            {isAdmin && (
+              <Link
+                to="/admin"
+                className="p-6 rounded-xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 hover:border-sky-500 transition group"
+              >
+                <div className="text-3xl mb-2">⚙️</div>
+                <h3 className="text-lg font-bold text-white group-hover:text-sky-400 transition">
+                  Admin Dashboard
+                </h3>
+                <p className="text-sm text-slate-400 mt-1">
+                  Manage movies, users, and reviews
+                </p>
+              </Link>
+            )}
           </div>
         </div>
       </section>

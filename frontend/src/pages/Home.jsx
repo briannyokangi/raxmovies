@@ -1,22 +1,43 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import MovieCard from '../components/MovieCard';
 import SearchBar from '../components/SearchBar';
 import SkeletonLoader from '../components/SkeletonLoader';
 import { movieService } from '../services/movieService';
-
-const genreOptions = ['Action', 'Comedy', 'Horror', 'Romance', 'Sci-Fi', 'Drama', 'Thriller', 'Animation'];
-const moodPrompts = [
-  { label: 'I’m in the mood for horror', query: 'horror' },
-  { label: 'Show me funny action movies', query: 'funny action' },
-  { label: 'Give me a cozy romance', query: 'romance' },
-  { label: 'Something thrilling from 2024', query: 'thriller 2024' },
-];
 
 const normalizeGenreList = (movie) => {
   const raw = movie.genre || movie.genres || '';
   if (Array.isArray(raw)) return raw;
   if (typeof raw === 'string') return raw.split(',').map((item) => item.trim()).filter(Boolean);
   return [];
+};
+
+const moodPrompts = [
+  { icon: '🔥', label: 'Hot & Trending', query: 'trending' },
+  { icon: '😄', label: 'Feel Good', query: 'comedy' },
+  { icon: '😱', label: 'Thrills', query: 'thriller' },
+  { icon: '🚀', label: 'Sci-Fi', query: 'sci-fi' },
+];
+
+const genreOptions = ['Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 'Horror', 'Romance', 'Sci-Fi', 'Thriller'];
+
+const getAssistantResults = (movies, query) => {
+  const normalized = query.toLowerCase();
+  const explicitGenres = ['action', 'comedy', 'horror', 'romance', 'sci-fi', 'thriller', 'drama', 'adventure'];
+  const yearMatch = normalized.match(/\b(19|20)\d{2}\b/)?.[0];
+  const selectedGenre = explicitGenres.find((genre) => normalized.includes(genre));
+
+  return [...movies]
+    .filter((movie) => {
+      const genres = normalizeGenreList(movie).map((genre) => genre.toLowerCase());
+      const title = (movie.title || '').toLowerCase();
+      const matchesGenre = selectedGenre ? genres.some((genre) => genre.includes(selectedGenre)) : true;
+      const matchesYear = yearMatch ? Number(movie.year || movie.releaseYear) === Number(yearMatch) : true;
+      const matchesText = title.includes(normalized) || genres.some((genre) => genre.includes(normalized));
+      return matchesYear && (matchesGenre || matchesText || !query.trim());
+    })
+    .sort((a, b) => Number(b.rating || b.vote_average || 0) - Number(a.rating || a.vote_average || 0))
+    .slice(0, 12);
 };
 
 const buildHistoryRecommendations = (movies, historyItems) => {
@@ -37,440 +58,387 @@ const buildHistoryRecommendations = (movies, historyItems) => {
     .map(({ movie }) => movie);
 };
 
-const getAssistantResults = (movies, query) => {
-  const normalized = query.toLowerCase();
-  const genreMatches = normalizeGenreList(movies[0] || {}).length > 0 ? [] : [];
+const ContentRow = ({ title, emoji, description, movies, loading }) => {
+  if (loading || !movies || movies.length === 0) return null;
 
-  const explicitGenres = ['action', 'comedy', 'horror', 'romance', 'sci-fi', 'thriller', 'drama', 'adventure'];
-  const yearMatch = normalized.match(/\b(19|20)\d{2}\b/)?.[0];
-  const selectedGenre = explicitGenres.find((genre) => normalized.includes(genre));
-  const moodKeyword = normalized.includes('horror') ? 'Horror' : normalized.includes('funny') || normalized.includes('comedy') ? 'Comedy' : normalized.includes('romance') ? 'Romance' : normalized.includes('thriller') ? 'Thriller' : normalized.includes('sci-fi') || normalized.includes('sci fi') ? 'Sci-Fi' : selectedGenre ? selectedGenre.charAt(0).toUpperCase() + selectedGenre.slice(1) : '';
-
-  return [...movies]
-    .filter((movie) => {
-      const genres = normalizeGenreList(movie).map((genre) => genre.toLowerCase());
-      const title = (movie.title || '').toLowerCase();
-      const matchesGenre = moodKeyword ? genres.some((genre) => genre.includes(moodKeyword.toLowerCase())) : false;
-      const matchesYear = yearMatch ? Number(movie.releaseYear) === Number(yearMatch) : true;
-      const matchesText = title.includes(normalized) || genres.some((genre) => genre.includes(normalized));
-      return matchesYear && (matchesGenre || matchesText || !query.trim());
-    })
-    .sort((a, b) => Number(b.rating || b.vote_average || 0) - Number(a.rating || a.vote_average || 0))
-    .slice(0, 8);
+  return (
+    <section className="py-8 animate-slideUp">
+      <div className="mb-6">
+        <h2 className="text-2xl md:text-3xl font-bold mb-2">
+          <span className="text-3xl md:text-4xl mr-2">{emoji}</span>
+          <span className="gradient-text">{title}</span>
+        </h2>
+        {description && <p className="text-gray-400 text-sm md:text-base">{description}</p>}
+      </div>
+      <div className="flex overflow-x-auto gap-3 pb-4 -mx-4 px-4 md:mx-0 md:px-0 scroll-smooth">
+        {movies.map((movie) => (
+          <div key={movie._id || movie.id} className="flex-shrink-0 w-40 md:w-48">
+            <MovieCard movie={movie} />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 };
 
 const Home = () => {
   const [movies, setMovies] = useState([]);
-  const [featuredMovies, setFeaturedMovies] = useState([]);
+  const [featuredMovie, setFeaturedMovie] = useState(null);
   const [trendingMovies, setTrendingMovies] = useState([]);
-  const [latestMovies, setLatestMovies] = useState([]);
   const [topRatedMovies, setTopRatedMovies] = useState([]);
+  const [newReleases, setNewReleases] = useState([]);
   const [recommendedMovies, setRecommendedMovies] = useState([]);
   const [continueWatching, setContinueWatching] = useState([]);
-  const [recentlyViewed, setRecentlyViewed] = useState([]);
-  const [search, setSearch] = useState('');
   const [assistantQuery, setAssistantQuery] = useState('');
   const [assistantResults, setAssistantResults] = useState([]);
-  const [assistantMessage, setAssistantMessage] = useState('Try: “Show me funny action movies from 2024”');
+  const [assistantMessage, setAssistantMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
-  const [page, setPage] = useState(1);
+  const [feedMovies, setFeedMovies] = useState([]);
+  const [feedPage, setFeedPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const sentinelRef = useRef(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const storedContinueWatching = localStorage.getItem('rax_continue_watching');
     if (storedContinueWatching) {
       try {
-        setContinueWatching(JSON.parse(storedContinueWatching));
+        setContinueWatching(JSON.parse(storedContinueWatching).slice(0, 6));
       } catch {
         setContinueWatching([]);
       }
     }
-
-    const storedRecentlyViewed = localStorage.getItem('rax_view_history');
-    if (storedRecentlyViewed) {
-      try {
-        setRecentlyViewed(JSON.parse(storedRecentlyViewed));
-      } catch {
-        setRecentlyViewed([]);
-      }
-    }
-
-    loadInitialMovies();
+    loadContent();
   }, []);
 
-  const loadInitialMovies = async () => {
+  const loadMoreMovies = useCallback(async () => {
+    if (loadingMore || !hasMore || loading) return;
+
+    try {
+      setLoadingMore(true);
+      const result = await movieService.getPopularMovies(feedPage);
+      const nextMovies = result.movies || [];
+
+      if (nextMovies.length === 0) {
+        setHasMore(false);
+        return;
+      }
+
+      setFeedMovies((prev) => [...prev, ...nextMovies]);
+      setFeedPage((prev) => prev + 1);
+      setHasMore((result.totalPages || 1) > feedPage);
+    } catch (err) {
+      console.error('Error loading more movies:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [feedPage, hasMore, loadingMore, loading]);
+
+  useEffect(() => {
+    if (!sentinelRef.current || loading) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          loadMoreMovies();
+        }
+      },
+      { rootMargin: '400px 0px' }
+    );
+
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [loading, loadMoreMovies]);
+
+  const loadContent = async () => {
     try {
       setLoading(true);
       setError('');
 
-      const [featuredResult, popularResult, nextPopularResult] = await Promise.all([
+      const [featured, popular1, popular2] = await Promise.all([
         movieService.getFeaturedMovies(),
         movieService.getPopularMovies(1),
         movieService.getPopularMovies(2),
       ]);
 
-      const popularMovies = popularResult.movies || [];
-      const nextPageMovies = nextPopularResult.movies || [];
-      const sortedTopRated = [...popularMovies].sort((a, b) => (b.rating || b.vote_average || 0) - (a.rating || a.vote_average || 0));
-
-      setFeaturedMovies(featuredResult);
-      setMovies(popularMovies);
-      setTrendingMovies(popularMovies.slice(0, 8));
-      setLatestMovies(nextPageMovies.slice(0, 8));
-      setTopRatedMovies(sortedTopRated.slice(0, 8));
-      setRecommendedMovies(popularMovies.slice(0, 8));
-      setHasMore((popularResult.totalPages || 1) > 1);
-      setPage(1);
+      const allMovies = [...(popular1.movies || []), ...(popular2.movies || [])];
+      const initialFeedMovies = (popular1.movies || []).slice(0, 12);
+      
+      setFeaturedMovie(allMovies[0] || featured[0]);
+      setMovies(allMovies);
+      setFeedMovies(initialFeedMovies);
+      setFeedPage(2);
+      setHasMore((popular1.totalPages || 1) > 1);
+      setTrendingMovies(allMovies.slice(0, 8));
+      setTopRatedMovies([...allMovies].sort((a, b) => (b.rating || b.vote_average || 0) - (a.rating || a.vote_average || 0)).slice(0, 8));
+      setNewReleases([...allMovies].filter(m => (m.year || m.releaseYear) >= 2024).slice(0, 8));
+      setRecommendedMovies(allMovies.slice(8, 16));
     } catch (err) {
-      console.error('Error fetching movies:', err);
-      setError('Failed to load movies. Please try again.');
+      console.error('Error loading movies:', err);
+      setError('Failed to load movies');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchMovies = async (nextPage = 1) => {
-    try {
-      setLoading(true);
-      const result = await movieService.getPopularMovies(nextPage);
-      const incomingMovies = result.movies || [];
-      setMovies((prev) => (nextPage === 1 ? incomingMovies : [...prev, ...incomingMovies]));
-      setHasMore((result.totalPages || 1) > nextPage);
-      setPage(nextPage);
-    } catch (err) {
-      console.error('Error fetching movies:', err);
-      setError('Failed to load movies. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSearch = (event) => {
-    event.preventDefault();
-    if (search.trim()) {
-      window.location.href = `/movies?search=${encodeURIComponent(search)}`;
-    }
-  };
-
-  const handleAssistantSearch = (event) => {
-    event.preventDefault();
-    const query = assistantQuery.trim();
-    const results = getAssistantResults(movies, query || 'recommended');
+  const handleMoodClick = (query) => {
+    setAssistantQuery(query);
+    const results = getAssistantResults(movies, query);
     setAssistantResults(results);
-    setAssistantMessage(
-      results.length > 0
-        ? `AI picked ${results.length} matches for “${query || 'your mood'}”.`
-        : `No exact matches for “${query || 'your mood'}”, so I’m showing broader picks.`
-    );
+    setAssistantMessage(`AI found ${results.length} picks for "${query}".`);
   };
 
-  const suggestions = useMemo(() => {
-    const baseSuggestions = movies.slice(0, 10).map((movie) => ({
-      label: movie.title,
-      type: 'Title',
-    }));
+  const handleAssistantSearch = (e) => {
+    e.preventDefault();
+    if (assistantQuery.trim()) {
+      const results = getAssistantResults(movies, assistantQuery);
+      setAssistantResults(results);
+      setAssistantMessage(
+        results.length > 0
+          ? `AI found ${results.length} matches for "${assistantQuery}".`
+          : `No matches found for "${assistantQuery}".`
+      );
+    }
+  };
 
-    const genreSuggestions = genreOptions.map((genre) => ({ label: genre, type: 'Genre' }));
-    const yearSuggestions = movies.slice(0, 6).map((movie) => ({ label: movie.releaseYear || '', type: 'Year' })).filter((item) => item.label);
+  const handleWatchNow = () => {
+    if (featuredMovie) {
+      navigate(`/movies/${featuredMovie._id || featuredMovie.id}`);
+    }
+  };
 
-    return [...baseSuggestions, ...genreSuggestions, ...yearSuggestions].slice(0, 15);
-  }, [movies]);
-
-  const featuredMovie = featuredMovies[0];
-  const historyRecommendations = useMemo(() => buildHistoryRecommendations(movies, recentlyViewed), [movies, recentlyViewed]);
-  const discoveryRows = useMemo(() => {
-    const comingSoon = [...movies].filter((movie) => Number(movie.releaseYear) >= 2024).slice(0, 4);
-    const editorPicks = featuredMovies.slice(0, 4);
-    const awardWinning = [...topRatedMovies].slice(0, 4);
-    const collections = [
-      {
-        title: 'Sci-Fi Picks',
-        description: 'Futuristic adventures and mind-bending worlds.',
-        movies: [...movies].filter((movie) => normalizeGenreList(movie).some((genre) => genre.toLowerCase().includes('sci'))).slice(0, 4),
-      },
-      {
-        title: 'Thriller Nights',
-        description: 'Fast-paced twists and suspenseful stories.',
-        movies: [...movies].filter((movie) => normalizeGenreList(movie).some((genre) => genre.toLowerCase().includes('thrill'))).slice(0, 4),
-      },
-      {
-        title: 'Feel-Good Romance',
-        description: 'Soft, warm, and heart-lifting stories.',
-        movies: [...movies].filter((movie) => normalizeGenreList(movie).some((genre) => genre.toLowerCase().includes('romance'))).slice(0, 4),
-      },
-    ];
-
-    return [
-      { title: 'Trending today', movies: trendingMovies.slice(0, 4) },
-      { title: 'Coming soon', movies: comingSoon },
-      { title: 'Editor’s picks', movies: editorPicks },
-      { title: 'Award-winning movies', movies: awardWinning },
-      { title: 'Recently added', movies: latestMovies.slice(0, 4) },
-      ...collections.map((collection) => ({ title: collection.title, description: collection.description, movies: collection.movies })),
-    ];
-  }, [movies, featuredMovies, topRatedMovies, trendingMovies, latestMovies]);
+  const heroImageUrl = featuredMovie?.poster || featuredMovie?.posterUrl || '/placeholder-hero.jpg';
+  const heroGradient = 'linear-gradient(to bottom, rgba(5,11,24,0) 30%, rgba(5,11,24,0.8) 100%)';
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <section className="relative overflow-hidden border-b border-slate-800/70 bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.18),_transparent_35%),linear-gradient(135deg,_#020617_0%,_#0f172a_50%,_#111827_100%)]">
-        <div className="container mx-auto flex flex-col px-4 py-10 md:px-6 md:py-16 lg:py-20">
-          <div className="max-w-3xl space-y-6">
-            <span className="inline-flex items-center gap-2 rounded-full border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-sm font-semibold text-sky-200">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-sky-400" /> AI-powered discovery
-            </span>
-            <h1 className="text-4xl font-bold tracking-tight text-white md:text-6xl">
-              Discover your next <span className="block text-sky-400">blue-rush favorite</span>
-            </h1>
-            <p className="max-w-2xl text-lg leading-relaxed text-slate-300">
-              Browse a polished collection of movies with instant trailer previews, smart recommendations, and a cinematic blue theme.
-            </p>
-            <div className="max-w-2xl pt-2">
-              <SearchBar value={search} onChange={(event) => setSearch(event.target.value)} onSubmit={handleSearch} suggestions={suggestions} onSuggestionSelect={(item) => { setSearch(item.label); window.location.href = `/movies?search=${encodeURIComponent(item.label)}`; }} />
-            </div>
-          </div>
+    <div className="min-h-screen bg-navy-950">
+      {error && (
+        <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-3 mx-4 mt-4 rounded-lg">
+          {error}
+        </div>
+      )}
 
-          <div className="mt-10 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-            <div className="overflow-hidden rounded-[2rem] border border-sky-500/20 bg-slate-900/70 shadow-2xl shadow-slate-950/60">
-              <div className="relative aspect-[16/9] overflow-hidden">
-                {featuredMovie?.poster ? (
-                  <img src={featuredMovie.poster} alt={featuredMovie.title} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full items-center justify-center bg-slate-800 text-5xl text-slate-500">🎬</div>
+      {/* Hero Section */}
+      {featuredMovie && !loading && (
+        <section className="relative h-96 md:h-[500px] overflow-hidden group">
+          <img
+            src={heroImageUrl}
+            alt={featuredMovie.title}
+            className="w-full h-full object-cover"
+          />
+          <div
+            style={{ backgroundImage: heroGradient }}
+            className="absolute inset-0"
+          />
+
+          {/* Hero Content */}
+          <div className="absolute inset-0 flex flex-col justify-end p-6 md:p-12">
+            <div className="max-w-2xl animate-slideUp">
+              <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">
+                {featuredMovie.title}
+              </h1>
+              
+              <div className="flex flex-wrap gap-4 mb-6 text-sm md:text-base">
+                {featuredMovie.year && (
+                  <span className="text-gray-300">{featuredMovie.year}</span>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent" />
-              </div>
-              <div className="space-y-4 p-6">
-                <div className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
-                  <span className="rounded-full bg-sky-500/10 px-3 py-1 text-sky-300">Featured</span>
-                  <span className="rounded-full bg-slate-800 px-3 py-1">{featuredMovie?.releaseYear || 'Now streaming'}</span>
-                </div>
-                <h2 className="text-2xl font-semibold text-white">{featuredMovie?.title || 'Featured release'}</h2>
-                <p className="text-slate-400">{featuredMovie?.description || 'A cinematic highlight ready for your next watch.'}</p>
-                <div className="flex flex-wrap gap-3">
-                  <a href="/movies" className="rounded-full bg-sky-600 px-5 py-2.5 font-semibold text-white transition hover:bg-sky-500">Browse movies</a>
-                  <a href="/movies?genre=28" className="rounded-full border border-slate-700 px-5 py-2.5 font-semibold text-slate-300 transition hover:border-sky-400 hover:text-white">Action picks</a>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-[2rem] border border-slate-800/80 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/60">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xl font-semibold text-white">Genres</h3>
-                <span className="text-sm text-slate-400">Tap to explore</span>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {genreOptions.map((genre) => (
-                  <a key={genre} href={`/movies?genre=${genre.toLowerCase()}`} className="rounded-full border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:border-sky-400 hover:text-white">
-                    {genre}
-                  </a>
-                ))}
-              </div>
-              <div className="mt-8 space-y-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300">
-                <div className="flex items-center justify-between">
-                  <span>AI picks ready</span>
-                  <span className="font-semibold text-white">Live</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Instant trailers</span>
-                  <span className="font-semibold text-white">Included</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Mobile ready</span>
-                  <span className="font-semibold text-white">Yes</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="container mx-auto px-4 py-8 md:px-6 md:py-10">
-        <div className="mb-8 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-          <div className="rounded-[2rem] border border-sky-500/20 bg-slate-900/75 p-6 shadow-2xl shadow-slate-950/40">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.35em] text-sky-400">AI assistant</p>
-                <h2 className="text-2xl font-semibold text-white">Find me a movie</h2>
-              </div>
-              <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-sm text-sky-300">Natural language</span>
-            </div>
-            <form onSubmit={handleAssistantSearch} className="mt-5 flex flex-col gap-3 md:flex-row">
-              <input value={assistantQuery} onChange={(event) => setAssistantQuery(event.target.value)} placeholder="Show me funny action movies from 2024" className="flex-1 rounded-full border border-slate-700 bg-slate-950/90 px-4 py-3 text-slate-100 outline-none focus:border-sky-400" />
-              <button type="submit" className="rounded-full bg-sky-600 px-5 py-3 font-semibold text-white transition hover:bg-sky-500">Ask AI</button>
-            </form>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {moodPrompts.map((prompt) => (
-                <button key={prompt.query} type="button" onClick={() => { setAssistantQuery(prompt.query); const results = getAssistantResults(movies, prompt.query); setAssistantResults(results); setAssistantMessage(`AI picked ${results.length} matches for “${prompt.query}”.`); }} className="rounded-full border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-300 transition hover:border-sky-400 hover:text-white">
-                  {prompt.label}
-                </button>
-              ))}
-            </div>
-            <p className="mt-4 text-sm text-slate-400">{assistantMessage}</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {(assistantResults.length > 0 ? assistantResults : historyRecommendations.slice(0, 4)).map((movie) => (
-                <div key={movie.id || movie._id} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
-                  <p className="font-semibold text-white">{movie.title}</p>
-                  <p className="mt-1 text-sm text-slate-400">{movie.genre || 'General'} • {movie.releaseYear || 'Coming soon'}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-[2rem] border border-slate-800/80 bg-slate-900/75 p-6 shadow-2xl shadow-slate-950/40">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.35em] text-sky-400">Personalized</p>
-                <h2 className="text-2xl font-semibold text-white">Recommended from your history</h2>
-              </div>
-              <span className="rounded-full border border-slate-700 bg-slate-950/70 px-3 py-1 text-sm text-slate-300">Smart picks</span>
-            </div>
-            <div className="mt-5 space-y-3">
-              {historyRecommendations.length > 0 ? (
-                historyRecommendations.slice(0, 4).map((movie) => (
-                  <div key={movie.id || movie._id} className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
-                    <div>
-                      <p className="font-semibold text-white">{movie.title}</p>
-                      <p className="text-sm text-slate-400">{movie.genre || 'General'} • {movie.releaseYear || 'Coming soon'}</p>
-                    </div>
-                    <span className="rounded-full bg-sky-500/10 px-3 py-1 text-sm text-sky-300">AI match</span>
+                {normalizeGenreList(featuredMovie).length > 0 && (
+                  <span className="text-gray-300">{normalizeGenreList(featuredMovie).slice(0, 2).join(', ')}</span>
+                )}
+                {(featuredMovie.rating || featuredMovie.vote_average) && (
+                  <div className="flex items-center gap-1 text-yellow-400">
+                    <span>⭐ {Math.round((featuredMovie.rating || featuredMovie.vote_average) * 10) / 10}</span>
                   </div>
-                ))
-              ) : (
-                <p className="text-sm text-slate-400">Watch a few titles to unlock deep personalization.</p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {continueWatching.length > 0 && (
-          <div className="mb-8">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-2xl font-semibold text-white">Continue watching</h2>
-              <a href="/profile" className="text-sm text-sky-300 transition hover:text-sky-200">View profile</a>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {continueWatching.slice(0, 4).map((movie) => (
-                <MovieCard key={movie.id || movie._id} movie={movie} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {recentlyViewed.length > 0 && (
-          <div className="mb-8">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-2xl font-semibold text-white">Recently viewed</h2>
-              <span className="text-sm text-slate-400">Your recent activity</span>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {recentlyViewed.slice(0, 4).map((movie) => (
-                <MovieCard key={movie.id || movie._id} movie={movie} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="mb-8">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-2xl font-semibold text-white">Trending now</h2>
-            <a href="/movies" className="text-sm text-sky-300 transition hover:text-sky-200">View all</a>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {trendingMovies.map((movie) => (
-              <MovieCard key={movie.id || movie._id} movie={movie} />
-            ))}
-          </div>
-        </div>
-
-        <div className="mb-8">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-2xl font-semibold text-white">Latest releases</h2>
-            <a href="/movies" className="text-sm text-sky-300 transition hover:text-sky-200">View all</a>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {latestMovies.map((movie) => (
-              <MovieCard key={movie.id || movie._id} movie={movie} />
-            ))}
-          </div>
-        </div>
-
-        <div className="mb-8">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-2xl font-semibold text-white">Top rated</h2>
-            <a href="/movies" className="text-sm text-sky-300 transition hover:text-sky-200">View all</a>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {topRatedMovies.map((movie) => (
-              <MovieCard key={movie.id || movie._id} movie={movie} />
-            ))}
-          </div>
-        </div>
-
-        <div className="mb-8">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-2xl font-semibold text-white">Recommended for you</h2>
-            <a href="/movies" className="text-sm text-sky-300 transition hover:text-sky-200">View all</a>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {recommendedMovies.map((movie) => (
-              <MovieCard key={movie.id || movie._id} movie={movie} />
-            ))}
-          </div>
-        </div>
-
-        <div className="mb-8 space-y-6">
-          {discoveryRows.map((row) => (
-            <div key={row.title} className="rounded-[2rem] border border-slate-800/80 bg-slate-900/70 p-6 shadow-2xl shadow-slate-950/40">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-semibold text-white">{row.title}</h2>
-                  {row.description ? <p className="text-sm text-slate-400">{row.description}</p> : null}
-                </div>
-                <a href="/movies" className="text-sm text-sky-300 transition hover:text-sky-200">Explore</a>
+                )}
+                {featuredMovie.duration && (
+                  <span className="text-gray-300">{featuredMovie.duration} min</span>
+                )}
               </div>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {row.movies.length > 0 ? row.movies.map((movie) => <MovieCard key={movie.id || movie._id} movie={movie} />) : <p className="text-sm text-slate-400">More titles are on the way.</p>}
-              </div>
-            </div>
-          ))}
-        </div>
 
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.35em] text-sky-400">Collection</p>
-            <h2 className="text-2xl font-semibold text-white">More to explore</h2>
-          </div>
-          <div className="rounded-full border border-slate-800 bg-slate-900/70 px-4 py-2 text-sm text-slate-300">
-            {movies.length} movies loaded
-          </div>
-        </div>
+              <p className="text-gray-200 text-sm md:text-lg line-clamp-3 mb-8 max-w-xl">
+                {featuredMovie.description || featuredMovie.overview}
+              </p>
 
-        {loading && movies.length === 0 ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <SkeletonLoader count={6} variant="poster" />
-          </div>
-        ) : (
-          <>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {movies.map((movie) => (
-                <MovieCard key={movie.id || movie._id} movie={movie} />
-              ))}
-            </div>
-
-            {error && <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-200">{error}</div>}
-
-            {hasMore && (
-              <div className="mt-8 flex justify-center">
-                <button onClick={() => fetchMovies(page + 1)} className="rounded-full bg-sky-600 px-6 py-3 font-semibold text-white transition hover:bg-sky-500">
-                  {loading ? 'Loading…' : 'Load More'}
+              <div className="flex gap-4">
+                <button onClick={handleWatchNow} className="btn-primary">
+                  ▶ Watch Now
                 </button>
+                <button className="btn-secondary">
+                  🎬 Watch Trailer
+                </button>
+                <button className="btn-secondary">
+                  ❤️ Add to Watchlist
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Main Content */}
+      <div className="container mx-auto px-4 py-8 md:py-12">
+        {/* AI Assistant Section */}
+        <section className="mb-12 animate-slideUp">
+          <div className="bg-gradient-to-br from-navy-900 to-navy-800 rounded-2xl p-6 md:p-8 border border-navy-800">
+            <div className="flex items-center gap-3 mb-6">
+              <span className="text-3xl">🤖</span>
+              <h2 className="text-2xl md:text-3xl font-bold gradient-text">AI Discovery</h2>
+            </div>
+
+            <p className="text-gray-300 mb-6">Describe your mood or what you're in the mood for, and I'll find perfect matches for you.</p>
+
+            <form onSubmit={handleAssistantSearch} className="flex gap-2 mb-6">
+              <input
+                type="text"
+                value={assistantQuery}
+                onChange={(e) => setAssistantQuery(e.target.value)}
+                placeholder="e.g., 'thrilling action movies' or 'romantic comedies from 2024'"
+                className="flex-1 px-4 py-3 bg-navy-800 border border-navy-700 rounded-lg text-white focus:border-sky-400 focus:outline-none"
+              />
+              <button type="submit" className="btn-primary">
+                Search
+              </button>
+            </form>
+
+            {/* Mood Buttons */}
+            <div className="flex flex-wrap gap-3 mb-6">
+              {moodPrompts.map((mood) => (
+                <button
+                  key={mood.query}
+                  onClick={() => handleMoodClick(mood.query)}
+                  className="px-4 py-2 rounded-full bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 transition-all duration-200"
+                >
+                  {mood.icon} {mood.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Assistant Results */}
+            {assistantResults.length > 0 && (
+              <div className="mt-8">
+                <p className="text-sky-400 mb-4 text-sm">{assistantMessage}</p>
+                <div className="flex overflow-x-auto gap-3 pb-4 -mx-4 px-4 md:mx-0 md:px-0">
+                  {assistantResults.map((movie) => (
+                    <div key={movie._id || movie.id} className="flex-shrink-0 w-40 md:w-48">
+                      <MovieCard movie={movie} />
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
+          </div>
+        </section>
+
+        {/* Continue Watching */}
+        {continueWatching.length > 0 && (
+          <ContentRow
+            title="Continue Watching"
+            emoji="👀"
+            description="Pick up where you left off"
+            movies={continueWatching}
+            loading={loading}
+          />
+        )}
+
+        {/* Trending Section */}
+        <ContentRow
+          title="Trending Now"
+          emoji="🔥"
+          description="What everyone's watching right now"
+          movies={trendingMovies}
+          loading={loading}
+        />
+
+        {/* Top Rated Section */}
+        <ContentRow
+          title="Top Rated"
+          emoji="⭐"
+          description="The highest-rated movies of all time"
+          movies={topRatedMovies}
+          loading={loading}
+        />
+
+        {/* New Releases */}
+        <ContentRow
+          title="New Releases"
+          emoji="🎬"
+          description="Fresh content just added"
+          movies={newReleases}
+          loading={loading}
+        />
+
+        {/* Recommended */}
+        <ContentRow
+          title="Recommended For You"
+          emoji="❤️"
+          description="Personalized picks based on your taste"
+          movies={recommendedMovies}
+          loading={loading}
+        />
+
+        {/* Genre Collections */}
+        {!loading && (
+          <>
+            <ContentRow
+              title="Action & Adventure"
+              emoji="💥"
+              description="High-octane thrills and epic adventures"
+              movies={movies.filter(m => normalizeGenreList(m).some(g => g.toLowerCase().includes('action'))).slice(0, 8)}
+            />
+            <ContentRow
+              title="Sci-Fi Worlds"
+              emoji="🚀"
+              description="Futuristic visions and mind-bending concepts"
+              movies={movies.filter(m => normalizeGenreList(m).some(g => g.toLowerCase().includes('sci'))).slice(0, 8)}
+            />
+            <ContentRow
+              title="Romance & Drama"
+              emoji="💝"
+              description="Heartfelt stories and emotional journeys"
+              movies={movies.filter(m => normalizeGenreList(m).some(g => g.toLowerCase().includes('romance') || g.toLowerCase().includes('drama'))).slice(0, 8)}
+            />
+
+            <section className="py-8 animate-slideUp">
+              <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h2 className="text-2xl md:text-3xl font-bold mb-2">
+                    <span className="text-3xl md:text-4xl mr-2">🌌</span>
+                    <span className="gradient-text">Endless Discovery</span>
+                  </h2>
+                  <p className="text-gray-400 text-sm md:text-base">Keep scrolling to uncover more movies automatically.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                {feedMovies.map((movie) => (
+                  <div key={`${movie._id || movie.id}-${movie.title}`}>
+                    <MovieCard movie={movie} />
+                  </div>
+                ))}
+              </div>
+
+              <div ref={sentinelRef} className="mt-6 flex justify-center py-4">
+                {loadingMore ? (
+                  <p className="text-sm text-sky-300">Loading more movies...</p>
+                ) : hasMore ? (
+                  <p className="text-sm text-gray-400">Scroll down for more</p>
+                ) : (
+                  <p className="text-sm text-gray-500">You&apos;ve reached the end of the catalog.</p>
+                )}
+              </div>
+            </section>
           </>
         )}
-      </section>
-    </main>
+
+        {loading && (
+          <div className="py-8">
+            <SkeletonLoader count={4} />
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
